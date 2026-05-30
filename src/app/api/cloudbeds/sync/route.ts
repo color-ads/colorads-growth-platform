@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminClient } from '@/lib/supabase/server'
 import { getMonthReservations } from '@/lib/api/cloudbeds'
 import { transformToMetrics, type BillingData } from '@/lib/api/transformer'
 
@@ -34,10 +34,7 @@ export async function GET(req: NextRequest) {
   }
 
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
-  )
+  const supabase = await createAdminClient()
 
   // ── Config del hotel ────────────────────────────────────────────────────────
   const { data: property } = await supabase
