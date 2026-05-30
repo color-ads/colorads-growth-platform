@@ -15,6 +15,8 @@ import { transformToMetrics, type BillingData } from '@/lib/api/transformer'
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
+  return NextResponse.json({ URL: !!process.env.NEXT_PUBLIC_SUPABASE_URL, KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY, CB: !!process.env.CLOUDBEDS_API_KEY })
+
   const { searchParams } = new URL(req.url)
   const slug  = searchParams.get('slug')  ?? 'h98'
   const year  = parseInt(searchParams.get('year')  ?? '2026')
