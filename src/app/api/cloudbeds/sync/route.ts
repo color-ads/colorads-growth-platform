@@ -8,19 +8,7 @@ export async function GET(req: NextRequest) {
   const data = await getMonthReservations(apiKey, 2026, 4)
   const sample = data.byArrival[0]
   return NextResponse.json({
-    fields: Object.keys(sample),
-    sample: {
-      status: sample.status,
-      sourceName: sample.sourceName,
-      adults: sample.adults,
-      children: sample.children,
-      nights: sample.nights,
-      grandTotal: sample.grandTotal,
-      country: sample.country,
-      countryCode: sample.countryCode,
-      rooms: sample.rooms?.[0],
-      dateCreated: sample.dateCreated,
-      checkIn: sample.checkIn,
-    }
+    guestListSample: sample.guestList,
+    allFields: Object.keys(sample),
   })
 }
