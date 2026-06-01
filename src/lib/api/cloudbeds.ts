@@ -1,6 +1,7 @@
 /**
  * Cloudbeds API Client — v1.2
- * Estructura real confirmada desde la API
+ * Auth: API Key (Bearer)
+ * Pagination: stop when data.length < PAGE_SIZE (last page)
  */
 
 const CLOUDBEDS_BASE = 'https://hotels.cloudbeds.com/api/v1.2'
@@ -14,7 +15,7 @@ export interface CloudbedsGuestRoom {
 
 export interface CloudbedsGuest {
   guestID: string
-  guestCountry: string   // ISO 2-letter: "US", "CO", etc.
+  guestCountry: string   // ISO 2-letter: "US", "CO"
   isMainGuest: boolean
   startDate: string
   endDate: string
@@ -24,13 +25,13 @@ export interface CloudbedsGuest {
 export interface CloudbedsReservation {
   reservationID: string
   status: string         // 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show'
-  dateCreated: string    // 'YYYY-MM-DD HH:MM:SS' — booking date
+  dateCreated: string    // 'YYYY-MM-DD HH:MM:SS' — booking datetime
   startDate: string      // 'YYYY-MM-DD' — check-in
   endDate: string        // 'YYYY-MM-DD' — check-out
   adults: string         // "1", "2"
   children: string       // "0", "1"
   balance: string
-  sourceName: string     // "Sitio web o motor de reservas", "Expedia", etc.
+  sourceName: string
   guestName: string
   guestList: Record<string, CloudbedsGuest>
 }
@@ -68,9 +69,8 @@ export async function getReservations(
   const PAGE_SIZE = 100
   const all: CloudbedsReservation[] = []
   let page = 1
-  let total = Infinity
 
-  while (all.length < total) {
+  while (true) {
     const q: Record<string, string> = {
       pageNumber: String(page),
       pageSize: String(PAGE_SIZE),
@@ -90,13 +90,14 @@ export async function getReservations(
 
     all.push(...res.data)
 
-    // Parar cuando la página tiene menos resultados que el PAGE_SIZE (última página)
+    // Última página: menos resultados que el tamaño de página
     if (res.data.length < PAGE_SIZE) break
-    // Safety limit
+    // Safety limit: máx 2000 reservas por query
     if (page >= 20) break
 
     page++
   }
+
   return all
 }
 
