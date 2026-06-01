@@ -1,49 +1,4 @@
-/**
- * Data Transformer — Cloudbeds → Dashboard Metrics
- *
- * Implementa la distinción central del negocio:
- *   bookingVolume  = reservas HECHAS en el mes (by booking date)  ← Bloque C
- *   totalRevenue   = facturación del hotel en el mes              ← Bloque B (viene de hoja Facturación)
- *   guests/nights  = huéspedes que LLEGARON ese mes               ← KPI Strip
- */
-
-import type { CloudbedsReservation } from './cloudbeds'
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export interface DashboardMetrics {
-  // ── Bloque B: Facturación
-  totalRevenue: number           // De la hoja Facturación (billing real del hotel)
-  attributableRevenue: number    // Revenue atribuible calculado desde Cloudbeds
-
-  // ── KPI Strip
-  guests: number                 // Adultos + niños que LLEGARON este mes (todos canales)
-  nights: number                 // Noches totales de los que llegaron (todos canales)
-
-  // ── Bloque C: Volumen de reservas
-  bookingVolume: number          // COP — reservas HECHAS este mes (booking date, atribuibles)
-  bookingCount: number           // N° reservas hechas este mes (atribuibles)
-  avgTicket: number              // bookingVolume / bookingCount
-  avgNightsPerBooking: number    // noches promedio por reserva
-
-  // ── Bloque F: Demografía
-  reservationStatus: {
-    checkedOut: number           // %
-    confirmed: number            // %
-    cancelled: number            // %
-    noShow: number               // %
-    staying: number              // % (checked_in / hospedado)
-  }
-  leadTime: {
-    moreThan30: number           // %
-    ten30: number                // %
-    six9: number                 // %
-    one5: number                 // %
-    lastMinute: number           // %
-  }
-  topCountries: { name: string; revenue: number }[]
-  topRoomTypes:  { name: string; revenue: number }[]
-}
+import type { CloudbedsReservation, CloudbedsGuest } from './cloudbeds'
 
 export interface BillingData {
   totalRevenue: number
@@ -59,163 +14,172 @@ export interface BillingData {
   cpc: number
 }
 
+export interface DashboardMetrics {
+  totalRevenue: number
+  attributableRevenue: number
+  guests: number
+  nights: number
+  bookingVolume: number
+  bookingCount: number
+  avgTicket: number
+  avgNightsPerBooking: number
+  reservationStatus: {
+    checkedOut: number
+    confirmed: number
+    cancelled: number
+    noShow: number
+    staying: number
+  }
+  leadTime: {
+    moreThan30: number
+    ten30: number
+    six9: number
+    one5: number
+    lastMinute: number
+  }
+  topCountries: { name: string; count: number }[]
+  topRoomTypes: { name: string; count: number }[]
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function parseAmount(s: string | number | undefined | null): number {
-  if (s == null) return 0
-  if (typeof s === 'number') return s
-  return parseFloat(String(s).replace(/,/g, '')) || 0
+function calcNights(startDate: string, endDate: string): number {
+  return Math.round(
+    (new Date(endDate).getTime() - new Date(startDate).getTime()) / 86_400_000,
+  )
 }
 
-/**
- * Calculate lead time bucket (days between booking and check-in).
- */
-function getLeadTimeBucket(dateCreated: string, checkIn: string): string {
-  const created = new Date(dateCreated)
-  const arrival = new Date(checkIn)
-  const days = Math.round((arrival.getTime() - created.getTime()) / 86_400_000)
-
-  if (days <= 0)  return 'lastMinute'   // 0 días
-  if (days <= 5)  return 'one5'         // 1–5 días
-  if (days <= 9)  return 'six9'         // 6–9 días
-  if (days <= 30) return 'ten30'        // 10–30 días
-  return 'moreThan30'                   // 30+ días
+function getLeadTimeBucket(dateCreated: string, startDate: string): string {
+  const bookingDate = dateCreated.split(' ')[0] // strip time
+  const days = Math.round(
+    (new Date(startDate).getTime() - new Date(bookingDate).getTime()) / 86_400_000,
+  )
+  if (days <= 0)  return 'lastMinute'
+  if (days <= 5)  return 'one5'
+  if (days <= 9)  return 'six9'
+  if (days <= 30) return 'ten30'
+  return 'moreThan30'
 }
 
-// ─── Main Transformer ─────────────────────────────────────────────────────────
+function getMainGuest(
+  guestList: Record<string, CloudbedsGuest> | undefined,
+): CloudbedsGuest | undefined {
+  if (!guestList) return undefined
+  const guests = Object.values(guestList)
+  return guests.find(g => g.isMainGuest) ?? guests[0]
+}
 
-/**
- * Transform raw Cloudbeds reservations into dashboard-ready metrics.
- *
- * @param byBookingDate  Reservas cuyo booking date cae en el mes objetivo
- * @param byArrival      Reservas cuyo check-in cae en el mes objetivo
- * @param billingData    Datos de la hoja Facturación para este mes
- * @param attributableSources  Fuentes que cuentan como atribuibles al marketing
- */
+const COUNTRY_NAMES: Record<string, string> = {
+  US: 'Estados Unidos', CO: 'Colombia',     PR: 'Puerto Rico',
+  MX: 'México',         DO: 'República Dominicana', CA: 'Canadá',
+  NL: 'Países Bajos',   HT: 'Haití',        DE: 'Alemania',
+  VE: 'Venezuela',      ES: 'España',        AR: 'Argentina',
+  GB: 'Reino Unido',    CR: 'Costa Rica',    PA: 'Panamá',
+  JM: 'Jamaica',        IN: 'India',         FR: 'Francia',
+  BR: 'Brasil',         CL: 'Chile',         PE: 'Perú',
+  EC: 'Ecuador',        UY: 'Uruguay',       BO: 'Bolivia',
+}
+
+function pct(n: number, total: number) {
+  return total > 0 ? Math.round((n / total) * 1000) / 10 : 0
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
 export function transformToMetrics(
   byBookingDate: CloudbedsReservation[],
   byArrival: CloudbedsReservation[],
   billingData: BillingData,
   attributableSources: string[],
 ): DashboardMetrics {
-  const isAttributable = (r: CloudbedsReservation) =>
-    attributableSources.includes(r.sourceName)
+  const isAttr   = (r: CloudbedsReservation) => attributableSources.includes(r.sourceName)
+  const isActive = (r: CloudbedsReservation) => r.status !== 'cancelled'
 
-  const isActive = (r: CloudbedsReservation) =>
-    r.status !== 'cancelled'
-
-  // ── BLOQUE C: Volumen de reservas (by booking date, atribuibles)
-  const attributableBookings = byBookingDate.filter(
-    r => isAttributable(r) && isActive(r),
-  )
-
-  const bookingVolume = attributableBookings.reduce(
-    (sum, r) => sum + parseAmount(r.grandTotal),
-    0,
-  )
-  const bookingCount = attributableBookings.length
-  const bookingNights = attributableBookings.reduce(
-    (sum, r) => sum + r.nights,
-    0,
-  )
-
-  // ── KPI STRIP: Huéspedes y noches (by arrival, todos los canales)
-  const activeArrivals = byArrival.filter(r => isActive(r))
-  const guests = activeArrivals.reduce(
-    (sum, r) => sum + r.adults + r.children,
-    0,
-  )
-  const nights = activeArrivals.reduce((sum, r) => sum + r.nights, 0)
-
-  // ── BLOQUE B: Revenue atribuible (by arrival, atribuibles)
-  const attrArrivals = byArrival.filter(
-    r => isAttributable(r) && isActive(r),
-  )
-  const attributableRevenue = attrArrivals.reduce(
-    (sum, r) => sum + parseAmount(r.grandTotal),
-    0,
-  )
-
-  // ── DEMOGRAFÍA: por mes del reporte (byArrival como referencia)
-  // Estados
-  const statusCounts = {
-    checkedOut: 0, confirmed: 0, cancelled: 0, noShow: 0, staying: 0,
+  // ── KPI Strip: huéspedes y noches (todos los canales, por arrival) ──────────
+  let guests = 0
+  let nights = 0
+  for (const r of byArrival) {
+    if (!isActive(r)) continue
+    guests += parseInt(r.adults || '0') + parseInt(r.children || '0')
+    nights += calcNights(r.startDate, r.endDate)
   }
-  // Para estados, usamos TODOS (incluye cancelados para mostrar % real)
-  const allArrivals = [...byArrival]
-  for (const r of allArrivals) {
-    if (r.status === 'checked_out')  statusCounts.checkedOut++
-    else if (r.status === 'confirmed')    statusCounts.confirmed++
-    else if (r.status === 'cancelled')   statusCounts.cancelled++
-    else if (r.status === 'no_show')     statusCounts.noShow++
-    else if (r.status === 'checked_in')  statusCounts.staying++
-  }
-  const totalStatuses = Object.values(statusCounts).reduce((a, b) => a + b, 0) || 1
 
-  // Antelación (de las reservas hechas este mes)
-  const leadCounts = { moreThan30: 0, ten30: 0, six9: 0, one5: 0, lastMinute: 0 }
+  // ── Bloque C: bookings hechos este mes (atribuibles) ───────────────────────
+  const attrBookings = byBookingDate.filter(r => isAttr(r) && isActive(r))
+  const bookingCount = attrBookings.length
+  const bookingNights = attrBookings.reduce(
+    (s, r) => s + calcNights(r.startDate, r.endDate), 0,
+  )
+
+  // ── Estados ────────────────────────────────────────────────────────────────
+  const st = { checkedOut: 0, confirmed: 0, cancelled: 0, noShow: 0, staying: 0 }
+  for (const r of byArrival) {
+    if      (r.status === 'checked_out')                           st.checkedOut++
+    else if (r.status === 'confirmed' || r.status === 'not_confirmed') st.confirmed++
+    else if (r.status === 'cancelled')                             st.cancelled++
+    else if (r.status === 'no_show')                               st.noShow++
+    else if (r.status === 'checked_in')                            st.staying++
+  }
+  const totalSt = Object.values(st).reduce((a, b) => a + b, 0)
+
+  // ── Antelación ────────────────────────────────────────────────────────────
+  const lt = { moreThan30: 0, ten30: 0, six9: 0, one5: 0, lastMinute: 0 }
   for (const r of byBookingDate) {
-    const bucket = getLeadTimeBucket(r.dateCreated, r.checkIn) as keyof typeof leadCounts
-    leadCounts[bucket]++
+    const b = getLeadTimeBucket(r.dateCreated, r.startDate) as keyof typeof lt
+    lt[b]++
   }
-  const totalLead = Object.values(leadCounts).reduce((a, b) => a + b, 0) || 1
+  const totalLt = Object.values(lt).reduce((a, b) => a + b, 0)
 
-  // Top países (atribuibles, por arrival, activos)
-  const countryRevenue = new Map<string, number>()
-  for (const r of attrArrivals) {
-    const country = r.country || r.countryCode || 'Desconocido'
-    countryRevenue.set(country, (countryRevenue.get(country) ?? 0) + parseAmount(r.grandTotal))
-  }
-  const topCountries = [...countryRevenue.entries()]
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 6)
-    .map(([name, revenue]) => ({ name, revenue }))
+  // ── Top países y habitaciones (atribuibles, por arrival, por conteo) ───────
+  const countryCounts = new Map<string, number>()
+  const roomCounts    = new Map<string, number>()
 
-  // Top habitaciones (atribuibles, por arrival, activos)
-  const roomRevenue = new Map<string, number>()
-  for (const r of attrArrivals) {
-    // Use the first room's type (most reservations are single-room)
-    const roomType = r.rooms?.[0]?.roomTypeName ?? 'Sin categoría'
-    roomRevenue.set(roomType, (roomRevenue.get(roomType) ?? 0) + parseAmount(r.grandTotal))
+  for (const r of byArrival) {
+    if (!isAttr(r) || !isActive(r)) continue
+    const g = getMainGuest(r.guestList)
+    if (g?.guestCountry) {
+      const name = COUNTRY_NAMES[g.guestCountry] ?? g.guestCountry
+      countryCounts.set(name, (countryCounts.get(name) ?? 0) + 1)
+    }
+    const roomType = g?.rooms?.[0]?.roomTypeName
+    if (roomType) {
+      roomCounts.set(roomType, (roomCounts.get(roomType) ?? 0) + 1)
+    }
   }
-  const topRoomTypes = [...roomRevenue.entries()]
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 6)
-    .map(([name, revenue]) => ({ name, revenue }))
 
   return {
-    // Facturación
     totalRevenue: billingData.totalRevenue,
-    attributableRevenue,
-
-    // KPI Strip
+    attributableRevenue: billingData.totalRevenue, // proxy hasta tener grandTotal
     guests,
     nights,
-
-    // Bloque C
-    bookingVolume,
+    bookingVolume: 0,   // pendiente: requiere endpoint adicional de Cloudbeds
     bookingCount,
-    avgTicket: bookingCount > 0 ? Math.round(bookingVolume / bookingCount) : 0,
-    avgNightsPerBooking: bookingCount > 0
-      ? Math.round((bookingNights / bookingCount) * 10) / 10
-      : 0,
-
-    // Demografía
+    avgTicket: 0,
+    avgNightsPerBooking:
+      bookingCount > 0
+        ? Math.round((bookingNights / bookingCount) * 10) / 10
+        : 0,
     reservationStatus: {
-      checkedOut: Math.round((statusCounts.checkedOut / totalStatuses) * 1000) / 10,
-      confirmed:  Math.round((statusCounts.confirmed  / totalStatuses) * 1000) / 10,
-      cancelled:  Math.round((statusCounts.cancelled  / totalStatuses) * 1000) / 10,
-      noShow:     Math.round((statusCounts.noShow     / totalStatuses) * 1000) / 10,
-      staying:    Math.round((statusCounts.staying    / totalStatuses) * 1000) / 10,
+      checkedOut: pct(st.checkedOut, totalSt),
+      confirmed:  pct(st.confirmed,  totalSt),
+      cancelled:  pct(st.cancelled,  totalSt),
+      noShow:     pct(st.noShow,     totalSt),
+      staying:    pct(st.staying,    totalSt),
     },
     leadTime: {
-      moreThan30: Math.round((leadCounts.moreThan30 / totalLead) * 1000) / 10,
-      ten30:      Math.round((leadCounts.ten30      / totalLead) * 1000) / 10,
-      six9:       Math.round((leadCounts.six9       / totalLead) * 1000) / 10,
-      one5:       Math.round((leadCounts.one5       / totalLead) * 1000) / 10,
-      lastMinute: Math.round((leadCounts.lastMinute / totalLead) * 1000) / 10,
+      moreThan30: pct(lt.moreThan30, totalLt),
+      ten30:      pct(lt.ten30,      totalLt),
+      six9:       pct(lt.six9,       totalLt),
+      one5:       pct(lt.one5,       totalLt),
+      lastMinute: pct(lt.lastMinute, totalLt),
     },
-    topCountries,
-    topRoomTypes,
+    topCountries: [...countryCounts.entries()]
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 6)
+      .map(([name, count]) => ({ name, count })),
+    topRoomTypes: [...roomCounts.entries()]
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 6)
+      .map(([name, count]) => ({ name, count })),
   }
 }
