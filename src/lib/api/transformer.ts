@@ -61,9 +61,10 @@ export interface BillingData {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function parseAmount(s: string | number): number {
+function parseAmount(s: string | number | undefined | null): number {
+  if (s == null) return 0
   if (typeof s === 'number') return s
-  return parseFloat(s.replace(/,/g, '')) || 0
+  return parseFloat(String(s).replace(/,/g, '')) || 0
 }
 
 /**
