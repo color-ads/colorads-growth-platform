@@ -84,13 +84,18 @@ export async function getReservations(
 
     const res = await request<{
       data: CloudbedsReservation[]
-      totalResults: number
+      count: number
+      total: number
     }>(apiKey, 'getReservations', q)
 
     all.push(...res.data)
-    total = res.totalResults
+
+    // Parar cuando la página tiene menos resultados que el PAGE_SIZE (última página)
+    if (res.data.length < PAGE_SIZE) break
+    // Safety limit
+    if (page >= 20) break
+
     page++
-    if (res.data.length === 0) break
   }
   return all
 }
