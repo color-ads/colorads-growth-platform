@@ -141,7 +141,8 @@ export function transformToMetrics(
       const name = COUNTRY_NAMES[g.guestCountry] ?? g.guestCountry
       countryCounts.set(name, (countryCounts.get(name) ?? 0) + 1)
     }
-    const roomType = g?.rooms?.[0]?.roomTypeName
+    const rawRoom = g?.rooms?.[0]?.roomTypeName ?? ''
+    const roomType = rawRoom.replace(/\s*\(.*?\)/g, '').trim()
     if (roomType) {
       roomCounts.set(roomType, (roomCounts.get(roomType) ?? 0) + 1)
     }
