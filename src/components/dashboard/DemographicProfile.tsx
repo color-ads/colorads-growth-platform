@@ -49,9 +49,9 @@ function DonutCard({ title, data, colors }: { title: string, data: { name: strin
 }
 
 export function DemographicProfile({ report, historicalReports, property }: DemographicsProps) {
-  const statusData = (report.booking_status_breakdown || []).map(s => ({ name: s.status, value: s.count, pct: s.pct }))
-  const leadData = (report.booking_lead_time_breakdown || []).map(s => ({ name: s.range, value: s.count, pct: s.pct }))
-  const geoData = (report.geo_breakdown || []).filter(g => g.country !== 'Otros').map(g => ({ name: g.country, value: g.revenue, pct: g.pct }))
+  const statusData = (report.booking_status_breakdown || []).map(s => ({ name: s.status, value: s.count, pct: s.pct })).sort((a, b) => b.value - a.value)
+  const leadData = (report.booking_lead_time_breakdown || []).map(s => ({ name: s.range, value: s.count, pct: s.pct })).sort((a, b) => b.value - a.value)
+  const geoData = (report.geo_breakdown || []).filter(g => g.country && g.country !== 'Otros').map(g => ({ name: g.country, value: g.revenue, pct: g.pct })).sort((a, b) => b.value - a.value)
   const roomData = (report.room_category_breakdown || []).slice(0, 8)
 
   return (
@@ -74,7 +74,7 @@ export function DemographicProfile({ report, historicalReports, property }: Demo
           <ResponsiveContainer width="100%" height={130}>
             <BarChart data={geoData} layout="vertical" margin={{ left: 4, right: 8 }}>
               <XAxis type="number" tickFormatter={v => formatCOP(v)} tick={{ fontSize: 9, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-              <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} width={72} />
+              <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} width={84} interval={0} />
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
               <Tooltip formatter={(v: any) => [formatCOP(Number(v)), 'Facturación']} contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #f1f5f9' }} />
               <Bar dataKey="value" fill={property.primary_color || GEO_COLOR} radius={[0, 3, 3, 0]} />
