@@ -187,7 +187,7 @@ export default function AdminPage() {
                 <tr className="text-gray-400 border-b border-gray-100">
                   <th className="text-left py-1.5 px-2 font-medium">Mes</th>
                   <th className="text-right py-1.5 px-2 font-medium">Inversión</th>
-                  <th className="text-right py-1.5 px-2 font-medium">ROAS</th>
+                  <th className="text-right py-1.5 px-2 font-medium">CPC</th>
                   <th className="text-right py-1.5 px-2 font-medium">Clics</th>
                   <th className="py-1.5 px-2"></th>
                 </tr>
@@ -197,7 +197,7 @@ export default function AdminPage() {
                   <tr key={`${r.year}-${r.month}`} className="hover:bg-gray-50">
                     <td className="py-1.5 px-2 text-gray-600">{MONTHS[r.month - 1].slice(0, 3)} {r.year}</td>
                     <td className="py-1.5 px-2 text-right text-gray-600">${fmt(r.total_investment)}</td>
-                    <td className="py-1.5 px-2 text-right font-medium" style={{ color: r.roas >= 7 ? '#16a34a' : r.roas >= 5 ? '#d97706' : '#dc2626' }}>{r.roas?.toFixed(1)}×</td>
+                    <td className="py-1.5 px-2 text-right text-gray-600">${fmt(r.cpc)}</td>
                     <td className="py-1.5 px-2 text-right text-gray-600">{fmt(r.clicks)}</td>
                     <td className="py-1.5 px-2 text-right">
                       <button onClick={() => { setYear(r.year); setMonth(r.month) }}

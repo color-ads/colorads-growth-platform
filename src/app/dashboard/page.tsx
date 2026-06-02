@@ -207,6 +207,9 @@ export default async function DashboardPage() {
     r.roas = (r.total_investment || 0) > 0
       ? Math.round((f.attributable_revenue / (r.total_investment as number)) * 100) / 100
       : 0
+    r.ad_cost_pct = f.attributable_revenue > 0
+      ? Math.round(((r.total_investment || 0) / f.attributable_revenue) * 10000) / 100
+      : 0
   }
   if (currentReport) {
     const f = facturacionForMonth(sourceData.rows, sourceData.attributable, currentYear, currentMonth)
@@ -214,6 +217,9 @@ export default async function DashboardPage() {
     currentReport.total_hotel_revenue  = f.total_hotel_revenue
     currentReport.roas = (currentReport.total_investment || 0) > 0
       ? Math.round((f.attributable_revenue / (currentReport.total_investment as number)) * 100) / 100
+      : 0
+    currentReport.ad_cost_pct = f.attributable_revenue > 0
+      ? Math.round(((currentReport.total_investment || 0) / f.attributable_revenue) * 10000) / 100
       : 0
   }
 
