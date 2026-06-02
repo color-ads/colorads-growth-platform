@@ -57,7 +57,7 @@ export function HistoricalCharts({ reports, property }: HistoricalChartsProps) {
           </div>
           <div className="flex items-center gap-4 text-[11px] text-gray-500">
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: primary }} />
+              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#1a1a1a' }} />
               Atribuible
             </span>
             <span className="flex items-center gap-1.5">
@@ -73,7 +73,7 @@ export function HistoricalCharts({ reports, property }: HistoricalChartsProps) {
             <YAxis tickFormatter={(v) => formatCOP(v)} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={52} />
             <Tooltip content={<CustomTooltip />} />
             <Bar dataKey="Total hotel" fill="#e2e8f0" radius={[3, 3, 0, 0]} />
-            <Bar dataKey="Atribuible" fill={primary} radius={[3, 3, 0, 0]} />
+            <Bar dataKey="Atribuible" fill="#1a1a1a" radius={[3, 3, 0, 0]} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
@@ -87,7 +87,7 @@ export function HistoricalCharts({ reports, property }: HistoricalChartsProps) {
           </div>
           <div className="flex items-center gap-4 text-[11px] text-gray-500">
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-indigo-400" />
+              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#1a1a1a' }} />
               Volumen COP
             </span>
             <span className="flex items-center gap-1.5">
@@ -103,7 +103,7 @@ export function HistoricalCharts({ reports, property }: HistoricalChartsProps) {
             <YAxis yAxisId="left" tickFormatter={(v) => formatCOP(v)} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={52} />
             <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#c7d2fe' }} axisLine={false} tickLine={false} width={36} />
             <Tooltip content={<CustomTooltip />} />
-            <Bar yAxisId="left" dataKey="Volumen" fill="#818cf8" radius={[3, 3, 0, 0]} />
+            <Bar yAxisId="left" dataKey="Volumen" fill="#1a1a1a" radius={[3, 3, 0, 0]} />
             <Line yAxisId="right" type="monotone" dataKey="Reservas" stroke="#c7d2fe" strokeWidth={2} dot={{ r: 2.5, fill: '#c7d2fe' }} strokeDasharray="4 2" />
           </ComposedChart>
         </ResponsiveContainer>
