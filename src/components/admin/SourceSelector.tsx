@@ -75,7 +75,8 @@ export function SourceSelector() {
         body: JSON.stringify({ slug: SLUG, sources: [...selected] }),
       })
       const d = await res.json()
-      setMsg(res.ok ? 'Guardado ✓' : (d.error || 'Error al guardar'))
+      if (res.ok) { setMsg('Guardado ✓'); await load() }
+      else setMsg(d.error || 'Error al guardar')
     } catch {
       setMsg('Error de red')
     }

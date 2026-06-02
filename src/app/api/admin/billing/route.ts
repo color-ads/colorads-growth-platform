@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { createClient as createAuthClient } from '@/lib/supabase/server'
 
@@ -99,6 +100,7 @@ export async function POST(req: NextRequest) {
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    revalidatePath('/dashboard')
     return NextResponse.json({ ok: true, saved: { year, month, ...marketing } })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
