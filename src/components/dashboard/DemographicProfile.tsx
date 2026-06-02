@@ -70,7 +70,7 @@ export function DemographicProfile({ report, historicalReports, property }: Demo
 
         {/* Geo bar chart */}
         <div className="bg-white border border-gray-100 rounded-xl p-4">
-          <h4 className="text-[12px] font-medium text-gray-900 mb-3">Venta × país</h4>
+          <h4 className="text-[12px] font-medium text-gray-900 mb-3">Venta de reservas × país</h4>
           <ResponsiveContainer width="100%" height={130}>
             <BarChart data={geoData} layout="vertical" margin={{ left: 4, right: 8 }}>
               <XAxis type="number" tickFormatter={v => formatCOP(v)} tick={{ fontSize: 9, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
