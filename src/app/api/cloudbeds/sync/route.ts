@@ -57,12 +57,17 @@ export async function GET(req: NextRequest) {
     // Guests, nights, countries from PMS arrivals
     let guests = 0, nights = 0
     const countryCounts = new Map<string, { code: string; count: number }>()
+    let totalActiveArrivals = 0
+    let attrActiveArrivals  = 0
 
     for (const r of arrivals) {
       if (r.status === 'cancelled') continue
+      totalActiveArrivals++
       guests += parseInt(r.adults || '0') + parseInt(r.children || '0')
       nights += Math.round((new Date(r.endDate).getTime() - new Date(r.startDate).getTime()) / 86_400_000)
+
       if (attrSources.includes(r.sourceName)) {
+        attrActiveArrivals++
         const g = Object.values(r.guestList ?? {})[0] as { guestCountry?: string } | undefined
         const code = g?.guestCountry
         if (code) {
@@ -72,6 +77,11 @@ export async function GET(req: NextRequest) {
         }
       }
     }
+
+    // attributableRevenue = portion of billing from direct channel arrivals
+    const attributableRevenue = totalActiveArrivals > 0
+      ? Math.round((attrActiveArrivals / totalActiveArrivals) * billing.total_revenue)
+      : billing.total_revenue
 
     // Country revenue: proportional to booking volume
     const totalCountryCount = [...countryCounts.values()].reduce((s, c) => s + c.count, 0) || 1
@@ -86,20 +96,23 @@ export async function GET(req: NextRequest) {
         pct: pct(d.count, totalCountryCount),
       }))
 
+    // Room breakdown — deduplicate multi-room bookings
     const totalRooms = insightsMetrics.topRoomTypes.reduce((s, r) => s + r.count, 0) || 1
-    const roomBreakdown: RoomCategoryBreakdown[] = insightsMetrics.topRoomTypes.map(r => ({
-      category_name: r.name,
-      revenue:  r.revenue,
-      bookings: r.count,
-      pct: pct(r.count, totalRooms),
-    }))
+    const roomBreakdown: RoomCategoryBreakdown[] = insightsMetrics.topRoomTypes
+      .filter(r => !r.name.includes(','))   // skip multi-room concatenated entries
+      .map(r => ({
+        category_name: r.name,
+        revenue:  r.revenue,
+        bookings: r.count,
+        pct: pct(r.count, totalRooms),
+      }))
 
     return NextResponse.json({
       property: { slug: property.slug, name: property.name, primaryColor: property.primary_color, secondaryColor: property.secondary_color, successFeePct: property.success_fee_pct },
       period: { year, month },
       metrics: {
         totalRevenue:        billing.total_revenue,
-        attributableRevenue: billing.attributable_revenue ?? billing.total_revenue,
+        attributableRevenue,
         guests, nights,
         bookingVolume:       billing.booking_volume ?? insightsMetrics.bookingVolume,
         bookingCount:        billing.booking_count  ?? insightsMetrics.bookingCount,
@@ -116,7 +129,7 @@ export async function GET(req: NextRequest) {
         fees: billing.fees, totalInvestment: billing.total_investment, adCostPct: billing.ad_cost_pct,
         roas: billing.roas, clicks: billing.clicks, impressions: billing.impressions, cpc: billing.cpc,
       },
-      _meta: { arrivals: arrivals.length, bookingCount: insightsMetrics.bookingCount, dataSource: 'insights+pms+supabase' },
+      _meta: { arrivals: arrivals.length, attrArrivals: attrActiveArrivals, totalArrivals: totalActiveArrivals, bookingCount: insightsMetrics.bookingCount, dataSource: 'insights+pms+supabase' },
     })
   } catch (e: unknown) {
     const err = e instanceof Error ? e : new Error(String(e))

@@ -64,7 +64,7 @@ export async function getInsightsBookingMetrics(
     const status  = String(records.reservation_status?.[i] ?? '')
     const checkin = String(records.checkin_date?.[i] ?? '')
     const bkDate  = Array.isArray(index[i]) ? String(index[i][0]) : String(index[i])
-    const rawRoom = String(records.room_types?.[i] ?? '').replace(/\s*\(.*?\)/g, '').trim()
+    const rawRoom = String(records.room_types?.[i] ?? '').split(',')[0].replace(/\s*\(.*?\)/g, '').trim()
 
     if      (status === 'Checked Out')                                    st.checkedOut++
     else if (status === 'Confirmed' || status === 'Confirmation Pending') st.confirmed++
