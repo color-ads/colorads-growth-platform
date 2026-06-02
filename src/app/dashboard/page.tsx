@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { createClient } from '@supabase/supabase-js'
 import { Sidebar } from '@/components/dashboard/Sidebar'
 import { KPIStrip } from '@/components/dashboard/KPIStrip'
-import { HistoricalCharts } from '@/components/dashboard/HistoricalCharts'
+import { RevenueExplorer, type SourceRow } from '@/components/dashboard/RevenueExplorer'
 import { DemographicProfile } from '@/components/dashboard/DemographicProfile'
 import { InsightsPanel, ChannelBreakdown } from '@/components/dashboard/InsightsPanel'
 import type { MonthlyReport, Property } from '@/types'
@@ -147,15 +147,39 @@ async function getHistoricalReports(): Promise<MonthlyReport[]> {
   }
 }
 
+async function getSourceData(): Promise<{ rows: SourceRow[]; attributable: string[] }> {
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+      { auth: { persistSession: false, autoRefreshToken: false } },
+    )
+    const { data: prop } = await supabase
+      .from('properties').select('id, attributable_sources').eq('slug', 'h98').single()
+    if (!prop) return { rows: [], attributable: [] }
+
+    const { data: rows } = await supabase
+      .from('monthly_source_revenue')
+      .select('year,month,source,category,stay_revenue,booking_volume,booking_count')
+      .eq('property_id', prop.id)
+      .order('year').order('month')
+
+    return { rows: (rows ?? []) as SourceRow[], attributable: prop.attributable_sources ?? [] }
+  } catch {
+    return { rows: [], attributable: [] }
+  }
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function DashboardPage() {
   const currentMonth = 4
   const currentYear  = 2026
 
-  const [currentReport, historical] = await Promise.all([
+  const [currentReport, historical, sourceData] = await Promise.all([
     getCurrentMonthReport(currentYear, currentMonth),
     getHistoricalReports(),
+    getSourceData(),
   ])
 
   const prevReport = historical[historical.length - 2] ?? null
@@ -225,8 +249,9 @@ export default async function DashboardPage() {
                 prevReport={prevReport}
                 property={property}
               />
-              <HistoricalCharts
-                reports={historical}
+              <RevenueExplorer
+                rows={sourceData.rows}
+                attributable={sourceData.attributable}
                 property={property}
               />
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
