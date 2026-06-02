@@ -225,7 +225,7 @@ export default async function DashboardPage() {
           ) : (
             <>
               <KPIStrip
-                currentReport={currentReport}
+                report={currentReport}
                 prevReport={prevReport}
                 property={property}
               />
