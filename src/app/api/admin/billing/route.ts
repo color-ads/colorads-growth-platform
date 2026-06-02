@@ -57,7 +57,6 @@ export async function POST(req: NextRequest) {
       const n = parseFloat(String(v ?? 0).replace(/[,$\s]/g, ''))
       return isNaN(n) ? 0 : n
     }
-    const total_revenue       = num(body.total_revenue)
     const google_investment   = num(body.google_investment)
     const meta_investment     = num(body.meta_investment)
     const content_investment  = num(body.content_investment)
@@ -65,20 +64,20 @@ export async function POST(req: NextRequest) {
     const clicks              = Math.round(num(body.clicks))
     const impressions         = Math.round(num(body.impressions))
 
+    // Only marketing inputs + CPC are stored here. Facturación, ROAS and % cost
+    // are derived from Cloudbeds (monthly_source_revenue) at read time in the dashboard.
     const total_investment = google_investment + meta_investment + content_investment + fees
     const ad_spend         = google_investment + meta_investment
-    const ad_cost_pct      = total_revenue > 0 ? Math.round((total_investment / total_revenue) * 10000) / 100 : 0
-    const roas             = total_investment > 0 ? Math.round((total_revenue / total_investment) * 100) / 100 : 0
     const cpc              = clicks > 0 ? Math.round(ad_spend / clicks) : 0
 
     const supabase = service()
     const { data: prop } = await supabase.from('properties').select('id').eq('slug', slug).single()
     if (!prop) return NextResponse.json({ error: 'Property not found' }, { status: 404 })
 
-    const payload = {
-      property_id: prop.id, year, month,
-      total_revenue, google_investment, meta_investment, content_investment, fees,
-      total_investment, ad_cost_pct, roas, clicks, impressions, cpc,
+    // Fields the admin manages (no revenue here)
+    const marketing = {
+      google_investment, meta_investment, content_investment, fees,
+      total_investment, clicks, impressions, cpc,
     }
 
     const { data: existing } = await supabase
@@ -86,15 +85,21 @@ export async function POST(req: NextRequest) {
       .eq('property_id', prop.id).eq('year', year).eq('month', month).maybeSingle()
 
     if (existing) {
-      const { error } = await supabase.from('monthly_billing').update(payload)
+      // Preserve any existing total_revenue/roas/ad_cost_pct columns; only update marketing fields
+      const { error } = await supabase.from('monthly_billing').update(marketing)
         .eq('property_id', prop.id).eq('year', year).eq('month', month)
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     } else {
-      const { error } = await supabase.from('monthly_billing').insert(payload)
+      // New month: include zero defaults for legacy revenue columns (defensive against NOT NULL)
+      const { error } = await supabase.from('monthly_billing').insert({
+        property_id: prop.id, year, month,
+        ...marketing,
+        total_revenue: 0, roas: 0, ad_cost_pct: 0,
+      })
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ ok: true, saved: payload })
+    return NextResponse.json({ ok: true, saved: { year, month, ...marketing } })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }

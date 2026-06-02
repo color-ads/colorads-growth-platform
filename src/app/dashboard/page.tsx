@@ -170,6 +170,22 @@ async function getSourceData(): Promise<{ rows: SourceRow[]; attributable: strin
   }
 }
 
+
+// Computes facturación (Cloudbeds room_revenue by stay date) for a month:
+// attributable = selected sources, total = all sources.
+function facturacionForMonth(
+  rows: SourceRow[], attributable: string[], year: number, month: number,
+): { attributable_revenue: number; total_hotel_revenue: number } {
+  const attrSet = new Set(attributable)
+  let attr = 0, total = 0
+  for (const r of rows) {
+    if (r.year !== year || r.month !== month) continue
+    total += r.stay_revenue
+    if (attrSet.has(r.source)) attr += r.stay_revenue
+  }
+  return { attributable_revenue: Math.round(attr), total_hotel_revenue: Math.round(total) }
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function DashboardPage() {
@@ -181,6 +197,25 @@ export default async function DashboardPage() {
     getHistoricalReports(),
     getSourceData(),
   ])
+
+  // Facturación + ROAS come from Cloudbeds (monthly_source_revenue), not the sheet.
+  // Investment stays from monthly_billing (admin). ROAS = attributable facturación ÷ investment.
+  for (const r of historical) {
+    const f = facturacionForMonth(sourceData.rows, sourceData.attributable, r.year!, r.month!)
+    r.attributable_revenue = f.attributable_revenue
+    r.total_hotel_revenue  = f.total_hotel_revenue
+    r.roas = (r.total_investment || 0) > 0
+      ? Math.round((f.attributable_revenue / (r.total_investment as number)) * 100) / 100
+      : 0
+  }
+  if (currentReport) {
+    const f = facturacionForMonth(sourceData.rows, sourceData.attributable, currentYear, currentMonth)
+    currentReport.attributable_revenue = f.attributable_revenue
+    currentReport.total_hotel_revenue  = f.total_hotel_revenue
+    currentReport.roas = (currentReport.total_investment || 0) > 0
+      ? Math.round((f.attributable_revenue / (currentReport.total_investment as number)) * 100) / 100
+      : 0
+  }
 
   const prevReport = historical[historical.length - 2] ?? null
 

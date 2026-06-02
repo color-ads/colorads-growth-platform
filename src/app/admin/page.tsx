@@ -25,7 +25,7 @@ export default function AdminPage() {
   const [msg, setMsg] = useState('')
 
   const [form, setForm] = useState({
-    total_revenue: '', google_investment: '', meta_investment: '',
+    google_investment: '', meta_investment: '',
     content_investment: '', fees: '', clicks: '', impressions: '',
   })
 
@@ -43,7 +43,6 @@ export default function AdminPage() {
   useEffect(() => {
     const r = rows.find(x => x.year === year && x.month === month)
     setForm({
-      total_revenue:      r ? String(r.total_revenue) : '',
       google_investment:  r ? String(r.google_investment) : '',
       meta_investment:    r ? String(r.meta_investment) : '',
       content_investment: r ? String(r.content_investment) : '',
@@ -57,8 +56,6 @@ export default function AdminPage() {
   const n = (v: string) => { const x = parseFloat(String(v).replace(/[,$\s]/g, '')); return isNaN(x) ? 0 : x }
   const totalInv = n(form.google_investment) + n(form.meta_investment) + n(form.content_investment) + n(form.fees)
   const adSpend = n(form.google_investment) + n(form.meta_investment)
-  const adPct = n(form.total_revenue) > 0 ? (totalInv / n(form.total_revenue)) * 100 : 0
-  const roas = totalInv > 0 ? n(form.total_revenue) / totalInv : 0
   const cpc = n(form.clicks) > 0 ? adSpend / n(form.clicks) : 0
 
   async function save() {
@@ -139,7 +136,6 @@ export default function AdminPage() {
 
             <div className="h-px bg-gray-100" />
 
-            {field('total_revenue', 'Facturación total del hotel (COP)', 'Ingreso total del mes según tu reporte')}
             <div className="grid grid-cols-2 gap-3">
               {field('google_investment', 'Inversión Google (COP)')}
               {field('meta_investment', 'Inversión Meta (COP)')}
@@ -167,11 +163,9 @@ export default function AdminPage() {
           <div className="bg-white border border-gray-100 rounded-xl p-5 h-fit">
             <h3 className="text-[12px] font-medium text-gray-900 mb-3">Cálculo automático</h3>
             <Derived label="Inversión total" value={`$${fmt(totalInv)}`} />
-            <Derived label="% costo / facturación" value={`${adPct.toFixed(2)}%`} />
-            <Derived label="ROAS" value={`${roas.toFixed(2)}×`} />
             <Derived label="CPC (ads pagas)" value={`$${fmt(cpc)}`} />
             <p className="text-[10px] text-gray-400 mt-3 leading-relaxed">
-              Estos valores se calculan solos al guardar. CPC usa Google + Meta ÷ clics.
+              La facturación y el ROAS salen de Cloudbeds en el dashboard (no se cargan acá). CPC usa Google + Meta ÷ clics.
             </p>
           </div>
         </div>
@@ -184,7 +178,6 @@ export default function AdminPage() {
               <thead>
                 <tr className="text-gray-400 border-b border-gray-100">
                   <th className="text-left py-1.5 px-2 font-medium">Mes</th>
-                  <th className="text-right py-1.5 px-2 font-medium">Facturación</th>
                   <th className="text-right py-1.5 px-2 font-medium">Inversión</th>
                   <th className="text-right py-1.5 px-2 font-medium">ROAS</th>
                   <th className="text-right py-1.5 px-2 font-medium">Clics</th>
@@ -195,7 +188,6 @@ export default function AdminPage() {
                 {rows.map(r => (
                   <tr key={`${r.year}-${r.month}`} className="hover:bg-gray-50">
                     <td className="py-1.5 px-2 text-gray-600">{MONTHS[r.month - 1].slice(0, 3)} {r.year}</td>
-                    <td className="py-1.5 px-2 text-right text-gray-800">${fmt(r.total_revenue)}</td>
                     <td className="py-1.5 px-2 text-right text-gray-600">${fmt(r.total_investment)}</td>
                     <td className="py-1.5 px-2 text-right font-medium" style={{ color: r.roas >= 7 ? '#16a34a' : r.roas >= 5 ? '#d97706' : '#dc2626' }}>{r.roas?.toFixed(1)}×</td>
                     <td className="py-1.5 px-2 text-right text-gray-600">{fmt(r.clicks)}</td>
@@ -206,7 +198,7 @@ export default function AdminPage() {
                   </tr>
                 ))}
                 {rows.length === 0 && (
-                  <tr><td colSpan={6} className="py-4 text-center text-gray-400">Sin datos aún</td></tr>
+                  <tr><td colSpan={5} className="py-4 text-center text-gray-400">Sin datos aún</td></tr>
                 )}
               </tbody>
             </table>
