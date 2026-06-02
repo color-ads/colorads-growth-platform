@@ -99,3 +99,75 @@ export async function getInsightsBookingMetrics(
     reservationStatus: { checkedOut: pct(st.checkedOut, totalSt), confirmed: pct(st.confirmed, totalSt), cancelled: pct(st.cancelled, totalSt), noShow: pct(st.noShow, totalSt), staying: pct(st.staying, totalSt) },
   }
 }
+
+// ─── Venta (producción) por país del huésped — report 34 ──────────────────
+// Nombres de país vienen en inglés desde Cloudbeds; los mapeamos a español.
+const COUNTRY_ES: Record<string, string> = {
+  'United States of America': 'Estados Unidos', 'United States': 'Estados Unidos',
+  'Colombia': 'Colombia', 'Puerto Rico': 'Puerto Rico', 'Mexico': 'México',
+  'Dominican Republic': 'Rep. Dominicana', 'Canada': 'Canadá', 'Venezuela': 'Venezuela',
+  'Ecuador': 'Ecuador', 'Costa Rica': 'Costa Rica', 'Spain': 'España', 'Aruba': 'Aruba',
+  'Cuba': 'Cuba', 'Panama': 'Panamá', 'Honduras': 'Honduras', 'Peru': 'Perú',
+  'Chile': 'Chile', 'Brazil': 'Brasil', 'Argentina': 'Argentina', 'Guatemala': 'Guatemala',
+  'Nicaragua': 'Nicaragua', 'El Salvador': 'El Salvador', 'Bolivia': 'Bolivia',
+  'Germany': 'Alemania', 'United Kingdom': 'Reino Unido', 'Netherlands': 'Países Bajos',
+  'Curacao': 'Curazao', 'Jamaica': 'Jamaica', 'Trinidad and Tobago': 'Trinidad y Tobago',
+  'Suriname': 'Surinam', 'Switzerland': 'Suiza', 'Australia': 'Australia', 'China': 'China',
+  'India': 'India', 'Israel': 'Israel', 'Poland': 'Polonia', 'Portugal': 'Portugal',
+  'Russia': 'Rusia', 'France': 'Francia', 'Italy': 'Italia',
+}
+
+export interface CountryProduction { country: string; revenue: number; bookings: number }
+
+// Venta REAL atribuible por país, por fecha de reserva (booking date), excluyendo canceladas.
+// Report 34 "Production by Guest Country" (dataset 3): el país es la dimensión de
+// agrupación (viene en `index`), y cada fila trae reservation_source + grand_total_amount.
+export async function getProductionByCountry(
+  apiKey: string, propertyId: string, year: number, month: number, attributableSources: string[],
+): Promise<CountryProduction[]> {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const ny = month === 12 ? year + 1 : year
+  const nm = month === 12 ? 1 : month + 1
+  const from = `${year}-${pad(month)}-01T00:00:00`
+  const to   = `${ny}-${pad(nm)}-01T00:00:00`
+
+  const res = await fetch(`${INSIGHTS_BASE}/stock_reports/34/query/data?mode=Run`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'X-PROPERTY-ID': propertyId, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      property_ids: [parseInt(propertyId)],
+      filters: { and: [
+        { cdf: { type: 'default', column: 'booking_datetime_property_timezone' }, operator: 'greater_than_or_equal', value: from },
+        { cdf: { type: 'default', column: 'booking_datetime_property_timezone' }, operator: 'less_than', value: to },
+        // excluir canceladas (report 34 no expone reservation_status como columna, sí como filtro)
+        { cdf: { type: 'default', column: 'reservation_status' }, operator: 'list_contains',
+          value: ['No Show', 'Confirmed', 'Checked Out', 'In-House', 'Confirmation Pending'] },
+      ]},
+      settings: { details: true, totals: false, subtotals: false, transpose: false },
+    }),
+    next: { revalidate: 0 },
+  })
+  if (!res.ok) throw new Error(`Insights API (report 34) ${res.status}: ${await res.text()}`)
+  const data = await res.json()
+  if (data.error) throw new Error(`Insights error (report 34): ${JSON.stringify(data.error)}`)
+
+  const records: Record<string, unknown[]> = data.records ?? {}
+  const index: unknown[][] = data.index ?? []
+  const src = records.reservation_source ?? []
+  const gt  = records.grand_total_amount ?? []
+  const n = index.length
+
+  const byCountry = new Map<string, { revenue: number; bookings: number }>()
+  for (let i = 0; i < n; i++) {
+    const raw = Array.isArray(index[i]) ? String(index[i][0] ?? '') : String(index[i] ?? '')
+    if (!raw || raw === '-') continue                         // país desconocido
+    if (!attributableSources.includes(String(src[i] ?? ''))) continue  // solo atribuible
+    const revenue = toNum(gt[i])
+    const cur = byCountry.get(raw) ?? { revenue: 0, bookings: 0 }
+    byCountry.set(raw, { revenue: cur.revenue + revenue, bookings: cur.bookings + 1 })
+  }
+
+  return [...byCountry.entries()]
+    .map(([country, d]) => ({ country: COUNTRY_ES[country] ?? country, revenue: Math.round(d.revenue), bookings: d.bookings }))
+    .sort((a, b) => b.revenue - a.revenue)
+}

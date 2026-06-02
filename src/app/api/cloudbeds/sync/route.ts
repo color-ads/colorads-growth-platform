@@ -1,18 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getReservations } from '@/lib/api/cloudbeds'
-import { getInsightsBookingMetrics } from '@/lib/api/insights'
+import { getInsightsBookingMetrics, getProductionByCountry } from '@/lib/api/insights'
 import type { GeoBreakdown, RoomCategoryBreakdown } from '@/types'
 
 export const dynamic = 'force-dynamic'
-
-const COUNTRY_NAMES: Record<string, string> = {
-  US: 'Estados Unidos', CO: 'Colombia', PR: 'Puerto Rico', MX: 'México',
-  DO: 'Rep. Dominicana', CA: 'Canadá', NL: 'Países Bajos', DE: 'Alemania',
-  VE: 'Venezuela', ES: 'España', AR: 'Argentina', GB: 'Reino Unido',
-  CR: 'Costa Rica', PA: 'Panamá', JM: 'Jamaica', IN: 'India', FR: 'Francia',
-  BR: 'Brasil', CL: 'Chile', PE: 'Perú', HT: 'Haití', EC: 'Ecuador',
-}
 
 function pct(n: number, t: number) { return t > 0 ? Math.round((n / t) * 1000) / 10 : 0 }
 
@@ -45,18 +37,18 @@ export async function GET(req: NextRequest) {
     const propertyId  = property.cloudbeds_property_id ?? '212206'
     const pad = (n: number) => String(n).padStart(2, '0')
 
-    const [insightsMetrics, arrivals] = await Promise.all([
+    const [insightsMetrics, arrivals, countryProduction] = await Promise.all([
       getInsightsBookingMetrics(apiKey, propertyId, year, month, attrSources),
       getReservations(apiKey, {
         checkInFrom: `${year}-${pad(month)}-01`,
         checkInTo:   `${year}-${pad(month)}-${pad(new Date(year, month, 0).getDate())}`,
         status: 'not_confirmed,confirmed,checked_in,checked_out,no_show',
       }),
+      getProductionByCountry(apiKey, propertyId, year, month, attrSources),
     ])
 
-    // Guests, nights, countries from PMS arrivals
+    // Guests + nights from PMS arrivals (check-in based)
     let guests = 0, nights = 0
-    const countryCounts = new Map<string, { code: string; count: number }>()
     let totalActiveArrivals = 0
     let attrActiveArrivals  = 0
 
@@ -65,17 +57,7 @@ export async function GET(req: NextRequest) {
       totalActiveArrivals++
       guests += parseInt(r.adults || '0') + parseInt(r.children || '0')
       nights += Math.round((new Date(r.endDate).getTime() - new Date(r.startDate).getTime()) / 86_400_000)
-
-      if (attrSources.includes(r.sourceName)) {
-        attrActiveArrivals++
-        const g = Object.values(r.guestList ?? {})[0] as { guestCountry?: string } | undefined
-        const code = g?.guestCountry
-        if (code) {
-          const name = COUNTRY_NAMES[code] ?? code
-          const cur = countryCounts.get(name) ?? { code, count: 0 }
-          countryCounts.set(name, { code, count: cur.count + 1 })
-        }
-      }
+      if (attrSources.includes(r.sourceName)) attrActiveArrivals++
     }
 
     // attributableRevenue = portion of billing from direct channel arrivals
@@ -83,18 +65,15 @@ export async function GET(req: NextRequest) {
       ? Math.round((attrActiveArrivals / totalActiveArrivals) * billing.total_revenue)
       : billing.total_revenue
 
-    // Country revenue: proportional to booking volume
-    const totalCountryCount = [...countryCounts.values()].reduce((s, c) => s + c.count, 0) || 1
-    const bv = insightsMetrics.bookingVolume
-
-    const geoBreakdown: GeoBreakdown[] = [...countryCounts.entries()]
-      .sort(([, a], [, b]) => b.count - a.count).slice(0, 6)
-      .map(([name, d]) => ({
-        country: name, country_code: d.code,
-        revenue:  Math.round((d.count / totalCountryCount) * bv),
-        bookings: d.count,
-        pct: pct(d.count, totalCountryCount),
-      }))
+    // Venta por país: REAL atribuible, grand_total por fecha de reserva (report 34)
+    const totalCountryRevenue = countryProduction.reduce((s, c) => s + c.revenue, 0) || 1
+    const geoBreakdown: GeoBreakdown[] = countryProduction.slice(0, 6).map(c => ({
+      country: c.country,
+      country_code: '',
+      revenue: c.revenue,
+      bookings: c.bookings,
+      pct: pct(c.revenue, totalCountryRevenue),
+    }))
 
     // Room breakdown — deduplicate multi-room bookings
     const totalRooms = insightsMetrics.topRoomTypes.reduce((s, r) => s + r.count, 0) || 1
@@ -129,7 +108,7 @@ export async function GET(req: NextRequest) {
         fees: billing.fees, totalInvestment: billing.total_investment, adCostPct: billing.ad_cost_pct,
         roas: billing.roas, clicks: billing.clicks, impressions: billing.impressions, cpc: billing.cpc,
       },
-      _meta: { arrivals: arrivals.length, attrArrivals: attrActiveArrivals, totalArrivals: totalActiveArrivals, bookingCount: insightsMetrics.bookingCount, dataSource: 'insights+pms+supabase' },
+      _meta: { arrivals: arrivals.length, attrArrivals: attrActiveArrivals, totalArrivals: totalActiveArrivals, bookingCount: insightsMetrics.bookingCount, geoCountries: countryProduction.length, geoTotal: Math.round(totalCountryRevenue), dataSource: 'insights+pms+supabase' },
     })
   } catch (e: unknown) {
     const err = e instanceof Error ? e : new Error(String(e))
