@@ -218,25 +218,33 @@ export default async function DashboardPage() {
 
         {/* Main scroll area */}
         <main className="flex-1 overflow-y-auto p-6 space-y-6">
-          <KPIStrip
-            currentReport={currentReport}
-            prevReport={prevReport}
-            property={property}
-          />
-          <HistoricalCharts
-            historical={historical}
-            currentMonth={currentMonth}
-            currentYear={currentYear}
-          />
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            <div className="xl:col-span-2 space-y-6">
-              <DemographicProfile report={currentReport} />
-              <ChannelBreakdown report={currentReport} />
+          {!currentReport ? (
+            <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
+              Cargando datos del mes...
             </div>
-            <div className="space-y-6">
-              <InsightsPanel report={currentReport} property={property} />
-            </div>
-          </div>
+          ) : (
+            <>
+              <KPIStrip
+                currentReport={currentReport}
+                prevReport={prevReport}
+                property={property}
+              />
+              <HistoricalCharts
+                historical={historical}
+                currentMonth={currentMonth}
+                currentYear={currentYear}
+              />
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                <div className="xl:col-span-2 space-y-6">
+                  <DemographicProfile report={currentReport} />
+                  <ChannelBreakdown report={currentReport} />
+                </div>
+                <div className="space-y-6">
+                  <InsightsPanel report={currentReport} property={property} />
+                </div>
+              </div>
+            </>
+          )}
         </main>
       </div>
     </div>
