@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { SourceSelector } from '@/components/admin/SourceSelector'
 
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const SLUG = 'h98'
@@ -177,6 +178,9 @@ export default function AdminPage() {
             </p>
           </div>
         </div>
+
+        {/* Source selector (growth only) */}
+        <SourceSelector />
 
         {/* Existing months table */}
         <div className="bg-white border border-gray-100 rounded-xl p-5 mt-5">
