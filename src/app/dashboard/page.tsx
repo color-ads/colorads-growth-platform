@@ -47,22 +47,18 @@ async function getCurrentMonthReport(year: number, month: number): Promise<Month
       total_impressions:   b.impressions,
       total_clicks:        b.clicks,
       avg_cpc:             b.cpc,
-      geo_breakdown: m.topCountries.map((c: { name: string; count: number }, i: number, arr: { count: number }[]) => ({
-        country:      c.name,
-        country_code: '',
-        revenue:      0,
-        bookings:     c.count,
-        pct:          arr.reduce((s: number, x: { count: number }) => s + x.count, 0) > 0
-          ? Math.round((c.count / arr.reduce((s: number, x: { count: number }) => s + x.count, 0)) * 1000) / 10
-          : 0,
+      geo_breakdown: (m.topCountries || []).map((c: { country: string; country_code: string; revenue: number; bookings: number; pct: number }) => ({
+        country:      c.country,
+        country_code: c.country_code,
+        revenue:      c.revenue,
+        bookings:     c.bookings,
+        pct:          c.pct,
       })),
-      room_category_breakdown: m.topRoomTypes.map((r: { name: string; count: number }, i: number, arr: { count: number }[]) => ({
-        category_name: r.name,
-        revenue:  0,
-        bookings: r.count,
-        pct: arr.reduce((s: number, x: { count: number }) => s + x.count, 0) > 0
-          ? Math.round((r.count / arr.reduce((s: number, x: { count: number }) => s + x.count, 0)) * 1000) / 10
-          : 0,
+      room_category_breakdown: (m.topRoomTypes || []).map((r: { category_name: string; revenue: number; bookings: number; pct: number }) => ({
+        category_name: r.category_name,
+        revenue:  r.revenue,
+        bookings: r.bookings,
+        pct:      r.pct,
       })),
       booking_status_breakdown: [
         { status: 'Checked Out', count: m.reservationStatus.checkedOut, pct: m.reservationStatus.checkedOut },
