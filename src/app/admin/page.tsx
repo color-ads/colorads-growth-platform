@@ -57,6 +57,7 @@ export default function AdminPage() {
   const totalInv = n(form.google_investment) + n(form.meta_investment) + n(form.content_investment) + n(form.fees)
   const adSpend = n(form.google_investment) + n(form.meta_investment)
   const cpc = n(form.clicks) > 0 ? adSpend / n(form.clicks) : 0
+  const existing = rows.find(r => r.year === year && r.month === month)
 
   async function save() {
     setSaving(true); setMsg('')
@@ -66,7 +67,7 @@ export default function AdminPage() {
         body: JSON.stringify({ slug: SLUG, year, month, ...form }),
       })
       const d = await res.json()
-      if (res.ok) { setMsg('Guardado ✓'); load() }
+      if (res.ok) { setMsg(`Guardado ✓ — ${existing ? 'mes reemplazado' : 'mes creado'}`); await load() }
       else setMsg(d.error || 'Error al guardar')
     } catch { setMsg('Error de red') }
     setSaving(false)
@@ -134,6 +135,13 @@ export default function AdminPage() {
               </div>
             </div>
 
+            <div className={`flex items-center gap-2 text-[11px] px-3 py-2 rounded-lg ${existing ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: existing ? '#d97706' : '#2563eb' }} />
+              {existing
+                ? 'Editando datos ya guardados de este mes — al guardar se reemplazan.'
+                : 'Mes nuevo, sin datos guardados todavía.'}
+            </div>
+
             <div className="h-px bg-gray-100" />
 
             <div className="grid grid-cols-2 gap-3">
@@ -162,7 +170,7 @@ export default function AdminPage() {
           {/* Live derived preview */}
           <div className="bg-white border border-gray-100 rounded-xl p-5 h-fit">
             <h3 className="text-[12px] font-medium text-gray-900 mb-3">Cálculo automático</h3>
-            <Derived label="Inversión total" value={`$${fmt(totalInv)}`} />
+            <Derived label="Inversión total (suma rubros)" value={`$${fmt(totalInv)}`} />
             <Derived label="CPC (ads pagas)" value={`$${fmt(cpc)}`} />
             <p className="text-[10px] text-gray-400 mt-3 leading-relaxed">
               La facturación y el ROAS salen de Cloudbeds en el dashboard (no se cargan acá). CPC usa Google + Meta ÷ clics.
