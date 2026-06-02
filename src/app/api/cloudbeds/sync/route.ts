@@ -1,32 +1,10 @@
-/**
- * GET /api/cloudbeds/sync?slug=h98&year=2026&month=4
- *
- * Combina tres fuentes:
- *   1. Data Insights API (report 17) → bookingVolume, lead time, room types, status
- *   2. PMS API (getReservations)     → guests, nights, countries
- *   3. Supabase monthly_billing      → totalRevenue, inversión, ROAS
- */
-
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getReservations } from '@/lib/api/cloudbeds'
 import { getInsightsBookingMetrics } from '@/lib/api/insights'
+import type { GeoBreakdown, RoomCategoryBreakdown } from '@/types'
 
 export const dynamic = 'force-dynamic'
-
-const COUNTRY_NAMES: Record<string, string> = {
-  US: 'Estados Unidos', CO: 'Colombia',     PR: 'Puerto Rico',
-  MX: 'México',         DO: 'Rep. Dominicana', CA: 'Canadá',
-  NL: 'Países Bajos',   HT: 'Haití',        DE: 'Alemania',
-  VE: 'Venezuela',      ES: 'España',        AR: 'Argentina',
-  GB: 'Reino Unido',    CR: 'Costa Rica',    PA: 'Panamá',
-  JM: 'Jamaica',        IN: 'India',         FR: 'Francia',
-  BR: 'Brasil',         CL: 'Chile',         PE: 'Perú',
-}
-
-function pct(n: number, total: number) {
-  return total > 0 ? Math.round((n / total) * 1000) / 10 : 0
-}
 
 export async function GET(req: NextRequest) {
   try {
@@ -46,7 +24,6 @@ export async function GET(req: NextRequest) {
       { auth: { persistSession: false, autoRefreshToken: false } },
     )
 
-    // ── Config del hotel ────────────────────────────────────────────────────
     const { data: property } = await supabase
       .from('properties')
       .select('id, slug, name, primary_color, secondary_color, success_fee_pct, attributable_sources, cloudbeds_property_id')
@@ -55,30 +32,21 @@ export async function GET(req: NextRequest) {
 
     if (!property) return NextResponse.json({ error: 'Property not found' }, { status: 404 })
 
-    // ── Billing de Supabase ─────────────────────────────────────────────────
     const { data: billing } = await supabase
-      .from('monthly_billing')
-      .select('*')
-      .eq('property_id', property.id)
-      .eq('year', year)
-      .eq('month', month)
-      .single()
+      .from('monthly_billing').select('*')
+      .eq('property_id', property.id).eq('year', year).eq('month', month).single()
 
-    if (!billing) {
-      return NextResponse.json({ error: `Sin datos de facturación para ${year}-${month}`, code: 'NO_BILLING_DATA' }, { status: 404 })
-    }
+    if (!billing) return NextResponse.json({ error: `Sin datos de facturación para ${year}-${month}`, code: 'NO_BILLING_DATA' }, { status: 404 })
 
-    const attrSources = property.attributable_sources ?? []
-    const propertyId  = property.cloudbeds_property_id ?? '212206'
-    const pad = (n: number) => String(n).padStart(2, '0')
-    const firstDay = `${year}-${pad(month)}-01`
-    const lastDay  = `${year}-${pad(month)}-${pad(new Date(year, month, 0).getDate())}`
+    const attrSources  = property.attributable_sources ?? []
+    const propertyId   = property.cloudbeds_property_id ?? '212206'
+    const pad          = (n: number) => String(n).padStart(2, '0')
+    const firstDay     = `${year}-${pad(month)}-01`
+    const lastDay      = `${year}-${pad(month)}-${pad(new Date(year, month, 0).getDate())}`
 
-    // ── Fetch en paralelo ───────────────────────────────────────────────────
+    // Fetch in parallel
     const [insightsMetrics, arrivals] = await Promise.all([
-      // 1. Data Insights → booking volume (por fecha de reserva)
       getInsightsBookingMetrics(apiKey, propertyId, year, month, attrSources),
-      // 2. PMS API → huéspedes/noches/países (por fecha de llegada)
       getReservations(apiKey, {
         checkInFrom: firstDay,
         checkInTo:   lastDay,
@@ -86,60 +54,53 @@ export async function GET(req: NextRequest) {
       }),
     ])
 
-    // ── Calcular guests, nights, países ────────────────────────────────────
-    let guests = 0
-    let nights = 0
-    const countryCounts = new Map<string, number>()
-
+    // Guests and nights from PMS arrivals (all channels)
+    let guests = 0, nights = 0
     for (const r of arrivals) {
       if (r.status === 'cancelled') continue
       guests += parseInt(r.adults || '0') + parseInt(r.children || '0')
-      const start = new Date(r.startDate).getTime()
-      const end   = new Date(r.endDate).getTime()
-      nights += Math.round((end - start) / 86_400_000)
-
-      if (attrSources.includes(r.sourceName)) {
-        const g = Object.values(r.guestList ?? {})[0] as { guestCountry?: string } | undefined
-        const countryCode = g?.guestCountry
-        if (countryCode) {
-          const name = COUNTRY_NAMES[countryCode] ?? countryCode
-          countryCounts.set(name, (countryCounts.get(name) ?? 0) + 1)
-        }
-      }
+      nights += Math.round((new Date(r.endDate).getTime() - new Date(r.startDate).getTime()) / 86_400_000)
     }
 
-    const topCountries = [...countryCounts.entries()]
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 6)
-      .map(([name, count]) => ({ name, count }))
+    // Map to MonthlyReport types
+    const totalAttr = insightsMetrics.topCountries.reduce((s, c) => s + c.count, 0) || 1
+    const totalRooms = insightsMetrics.topRoomTypes.reduce((s, r) => s + r.count, 0) || 1
 
-    // ── Respuesta ───────────────────────────────────────────────────────────
+    const geoBreakdown: GeoBreakdown[] = insightsMetrics.topCountries.map(c => ({
+      country:      c.name,
+      country_code: c.code,
+      revenue:      c.revenue,
+      bookings:     c.count,
+      pct:          Math.round((c.count / totalAttr) * 1000) / 10,
+    }))
+
+    const roomBreakdown: RoomCategoryBreakdown[] = insightsMetrics.topRoomTypes.map(r => ({
+      category_name: r.name,
+      revenue:       r.revenue,
+      bookings:      r.count,
+      pct:           Math.round((r.count / totalRooms) * 1000) / 10,
+    }))
+
     return NextResponse.json({
       property: {
-        slug:           property.slug,
-        name:           property.name,
-        primaryColor:   property.primary_color,
-        secondaryColor: property.secondary_color,
-        successFeePct:  property.success_fee_pct,
+        slug: property.slug, name: property.name,
+        primaryColor: property.primary_color, secondaryColor: property.secondary_color,
+        successFeePct: property.success_fee_pct,
       },
       period: { year, month },
       metrics: {
-        // Facturación (Supabase)
-        totalRevenue:        billing.total_revenue,
-        attributableRevenue: billing.total_revenue,
-        // KPI Strip (PMS API arrivals)
+        totalRevenue:          billing.total_revenue,
+        attributableRevenue:   billing.attributable_revenue ?? billing.total_revenue,
         guests,
         nights,
-        // Booking Volume (Data Insights)
-        bookingVolume:         insightsMetrics.bookingVolume,
-        bookingCount:          insightsMetrics.bookingCount,
+        bookingVolume:         billing.booking_volume ?? insightsMetrics.bookingVolume,
+        bookingCount:          billing.booking_count  ?? insightsMetrics.bookingCount,
         avgTicket:             insightsMetrics.avgTicket,
         avgNightsPerBooking:   insightsMetrics.avgNightsPerBooking,
-        // Demografía
         reservationStatus:     insightsMetrics.reservationStatus,
         leadTime:              insightsMetrics.leadTime,
-        topRoomTypes:          insightsMetrics.topRoomTypes,
-        topCountries,
+        topRoomTypes:          roomBreakdown,
+        topCountries:          geoBreakdown,
       },
       billing: {
         totalRevenue:      billing.total_revenue,
@@ -155,9 +116,9 @@ export async function GET(req: NextRequest) {
         cpc:               billing.cpc,
       },
       _meta: {
-        arrivals:      arrivals.length,
-        bookingCount:  insightsMetrics.bookingCount,
-        dataSource:    'insights+pms+supabase',
+        arrivals: arrivals.length,
+        bookingCount: insightsMetrics.bookingCount,
+        dataSource: 'insights+pms+supabase',
       },
     })
   } catch (e: unknown) {
