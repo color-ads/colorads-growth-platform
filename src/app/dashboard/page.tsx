@@ -33,8 +33,8 @@ async function getCurrentMonthReport(year: number, month: number): Promise<Month
       total_nights:        m.nights,
       total_investment:    b.totalInvestment,
       ad_cost_pct:         b.adCostPct,
-      attributable_revenue: m.attributableRevenue,
-      total_hotel_revenue:  m.totalRevenue,
+      attributable_revenue: 0,   // lo fija facturacionForMonth (abajo) desde monthly_source_revenue
+      total_hotel_revenue:  0,   // idem — el sync ya no calcula facturación
       total_bookings:      m.bookingCount,
       booking_volume:      m.bookingVolume,
       avg_ticket:          m.avgTicket,
