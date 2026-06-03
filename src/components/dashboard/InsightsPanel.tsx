@@ -12,7 +12,6 @@ interface InsightsPanelProps {
 export function InsightsPanel({ report, property }: InsightsPanelProps) {
   const insights = report.ai_insights
   const milestones = report.milestones || []
-  const successFee = calcSuccessFee(report.attributable_revenue || 0, property.success_fee_pct)
 
   return (
     <div className="grid grid-cols-2 gap-4">
@@ -55,64 +54,66 @@ export function InsightsPanel({ report, property }: InsightsPanelProps) {
         )}
       </div>
 
-      {/* Milestones + Fee */}
-      <div className="space-y-4">
-        {/* Milestones */}
-        <div className="bg-white border border-gray-100 rounded-xl p-5">
-          <h3 className="text-[13px] font-medium text-gray-900 flex items-center gap-2 mb-4">
-            <Target className="w-4 h-4 text-gray-400" />
-            Hitos del mes
-          </h3>
-          <div className="space-y-0 divide-y divide-gray-50">
-            {milestones.map((m) => (
-              <div key={m.id} className="flex items-start gap-3 py-2.5">
-                <div className={cn(
-                  'w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5',
-                  m.status === 'completed' && m.type === 'achievement' && 'bg-green-100',
-                  m.status === 'in_progress' && 'bg-amber-100',
-                  m.type === 'highlight' && 'bg-purple-100',
-                )}>
-                  {m.status === 'completed' && m.type !== 'highlight' && <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />}
-                  {m.status === 'in_progress' && <Clock className="w-3.5 h-3.5 text-amber-600" />}
-                  {m.type === 'highlight' && <Star className="w-3.5 h-3.5 text-purple-600" />}
-                </div>
-                <div>
-                  <div className="text-[12px] font-medium text-gray-800 leading-snug">{m.title}</div>
-                  <div className="text-[11px] text-gray-400 mt-0.5">{m.subtitle}</div>
-                </div>
+      {/* Milestones */}
+      <div className="bg-white border border-gray-100 rounded-xl p-5">
+        <h3 className="text-[13px] font-medium text-gray-900 flex items-center gap-2 mb-4">
+          <Target className="w-4 h-4 text-gray-400" />
+          Hitos del mes
+        </h3>
+        <div className="space-y-0 divide-y divide-gray-50">
+          {milestones.map((m) => (
+            <div key={m.id} className="flex items-start gap-3 py-2.5">
+              <div className={cn(
+                'w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5',
+                m.status === 'completed' && m.type === 'achievement' && 'bg-green-100',
+                m.status === 'in_progress' && 'bg-amber-100',
+                m.type === 'highlight' && 'bg-purple-100',
+              )}>
+                {m.status === 'completed' && m.type !== 'highlight' && <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />}
+                {m.status === 'in_progress' && <Clock className="w-3.5 h-3.5 text-amber-600" />}
+                {m.type === 'highlight' && <Star className="w-3.5 h-3.5 text-purple-600" />}
               </div>
-            ))}
-          </div>
+              <div>
+                <div className="text-[12px] font-medium text-gray-800 leading-snug">{m.title}</div>
+                <div className="text-[11px] text-gray-400 mt-0.5">{m.subtitle}</div>
+              </div>
+            </div>
+          ))}
         </div>
+      </div>
+    </div>
+  )
+}
 
-        {/* ROI del fee */}
-        <div className="bg-white border border-gray-100 rounded-xl p-5" style={{ borderTopColor: property.primary_color, borderTopWidth: 2 }}>
-          <h3 className="text-[13px] font-medium text-gray-900 flex items-center gap-2 mb-3">
-            <BarChart3 className="w-4 h-4 text-gray-400" />
-            ROI de la inversión
-          </h3>
-          <div className="grid grid-cols-1 gap-2">
-            <div className="bg-gray-50 rounded-lg p-3">
-              <div className="text-[10px] text-gray-400 mb-1">Facturación atribuible</div>
-              <div className="text-lg font-medium text-gray-900">{formatCOP(report.attributable_revenue || 0)}</div>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3">
-              <div className="text-[10px] text-gray-400 mb-1">Inversión total</div>
-              <div className="text-lg font-medium text-gray-900">{formatCOP(report.total_investment || 0)}</div>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3">
-              <div className="text-[10px] text-gray-400 mb-1">ROAS</div>
-              <div className="text-lg font-medium" style={{ color: property.primary_color }}>{formatROAS(report.roas || 0)}</div>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3">
-              <div className="text-[10px] text-gray-400 mb-1">Fee de éxito ({property.success_fee_pct}%)</div>
-              <div className="text-lg font-medium text-gray-900">{formatCOP(successFee)}</div>
-            </div>
+/* ROI strip - franja horizontal full-width (va despues de los 2 graficos) */
+export function RoiStrip({ report, property }: InsightsPanelProps) {
+  const successFee = calcSuccessFee(report.attributable_revenue || 0, property.success_fee_pct)
+  const ratio = ((report.attributable_revenue || 0) / (report.total_investment || 1)).toFixed(1)
+  const metrics = [
+    { label: 'Facturación atribuible', value: formatCOP(report.attributable_revenue || 0), color: '#111827' },
+    { label: 'Inversión total', value: formatCOP(report.total_investment || 0), color: '#111827' },
+    { label: 'ROAS', value: formatROAS(report.roas || 0), color: property.primary_color },
+    { label: `Fee de éxito (${property.success_fee_pct}%)`, value: formatCOP(successFee), color: '#111827' },
+  ]
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl p-5" style={{ borderTopColor: property.primary_color, borderTopWidth: 2 }}>
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h3 className="text-[13px] font-medium text-gray-900 flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-gray-400" />
+          ROI de la inversión
+        </h3>
+        <span className="text-[11px] text-gray-400">
+          Por cada $1 invertido en marketing → se generaron ${ratio} en ventas
+        </span>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {metrics.map((mt) => (
+          <div key={mt.label} className="bg-gray-50 rounded-lg px-4 py-3">
+            <div className="text-[11px] text-gray-400 mb-1">{mt.label}</div>
+            <div className="text-2xl font-semibold whitespace-nowrap" style={{ color: mt.color }}>{mt.value}</div>
           </div>
-          <div className="mt-3 text-[10px] text-gray-400 text-center">
-            Por cada $1 invertido en marketing → se generaron ${((report.attributable_revenue || 0) / (report.total_investment || 1)).toFixed(1)} en ventas
-          </div>
-        </div>
+        ))}
       </div>
     </div>
   )

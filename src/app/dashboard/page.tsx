@@ -5,7 +5,7 @@ import { Sidebar } from '@/components/dashboard/Sidebar'
 import { KPIStrip } from '@/components/dashboard/KPIStrip'
 import { RevenueExplorer, type SourceRow } from '@/components/dashboard/RevenueExplorer'
 import { DemographicProfile } from '@/components/dashboard/DemographicProfile'
-import { InsightsPanel, ChannelBreakdown } from '@/components/dashboard/InsightsPanel'
+import { InsightsPanel, ChannelBreakdown, RoiStrip } from '@/components/dashboard/InsightsPanel'
 import type { MonthlyReport, Property } from '@/types'
 import { MonthSelector } from '@/components/dashboard/MonthSelector'
 import { RefreshButton } from '@/components/dashboard/RefreshButton'
@@ -346,6 +346,7 @@ export default async function DashboardPage({
                 attributable={sourceData.attributable}
                 property={property}
               />
+              <RoiStrip report={currentReport} property={property} />
               <BookingPaceChart distribution={stayDistribution} monthLabel={periodLabel} />
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="xl:col-span-2 space-y-6">
