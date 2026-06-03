@@ -85,7 +85,7 @@ async function bookingStayDistribution(
 type Card = { title: string; body: string }
 type AiInsights = { positive: Card[]; attention: Card[]; strategic: Card[] }
 
-// Devuelve { insights, debug }. "debug" explica el resultado (ver aiDebug en el payload).
+// Devuelve { insights, debug }. "insights" se cachea; "debug" solo se loguea si falla.
 async function generateInsights(ctx: {
   hotelName: string; year: number; month: number
   attrRevenue: number; totalInvestment: number; roas: number; adCostPct: number; fee: number; successFeePct: number
@@ -97,7 +97,7 @@ async function generateInsights(ctx: {
   stayDist: { label: string; revenue: number; self: boolean }[]
 }): Promise<{ insights: AiInsights | null; debug: string }> {
   const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) return { insights: null, debug: 'NO_API_KEY (process.env.ANTHROPIC_API_KEY vacio en el deploy)' }
+  if (!apiKey) return { insights: null, debug: 'NO_API_KEY' }
   const cop = (n: number) => '$' + (Math.round(n) / 1e6).toFixed(1) + 'M'
   const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
   const mesNombre = meses[ctx.month - 1] ?? String(ctx.month)
@@ -137,7 +137,6 @@ Responde SOLO con JSON valido (sin markdown ni texto extra). Forma: un objeto co
     clearTimeout(timer)
     if (!res.ok) {
       const body = (await res.text()).slice(0, 150)
-      console.error('[generateInsights] api', res.status, body)
       return { insights: null, debug: `API_${res.status}: ${body}` }
     }
     const data = await res.json()
@@ -159,7 +158,7 @@ Responde SOLO con JSON valido (sin markdown ni texto extra). Forma: un objeto co
       else out.strategic.push(card)
     }
     const total = out.positive.length + out.attention.length + out.strategic.length
-    if (total === 0) return { insights: null, debug: `EMPTY (0 items) raw: ${text.slice(0, 150)}` }
+    if (total === 0) return { insights: null, debug: `EMPTY raw: ${text.slice(0, 150)}` }
     return { insights: out, debug: `OK ${total} items` }
   } catch (e) {
     return { insights: null, debug: `EXCEPTION: ${(e as Error).message}` }
@@ -245,10 +244,9 @@ export async function buildMonthReport(slug: string, year: number, month: number
     _meta: { arrivals: arrivals.length, bookingCount: insightsMetrics.bookingCount, geoCountries: countryProduction.length, geoTotal: Math.round(totalCountryRevenue), dataSource: 'insights+pms+supabase' },
   }
 
-  // ── Conclusiones/propuestas IA (4 items) + aiDebug (motivo). Solo en withAi (refresh/cron).
+  // ── Conclusiones/propuestas IA (4 items), cacheadas. Solo en withAi (refresh/cron).
   const withAi = opts.withAi !== false
   let aiInsights: AiInsights | null = null
-  let aiDebug = 'skipped (withAi=false)'
   if (withAi) {
     let attrRevenue = 0
     const attrSet = new Set(attrSources)
@@ -277,15 +275,14 @@ export async function buildMonthReport(slug: string, year: number, month: number
       stayDist: stayDist.map((s) => ({ label: s.label, revenue: s.revenue, self: s.self })),
     })
     aiInsights = r.insights
-    aiDebug = r.debug
+    if (!aiInsights) console.error('[buildMonthReport] insights null:', r.debug)
   } else {
     const { data: existing } = await supabase.from('monthly_dashboard_cache')
       .select('payload').eq('property_id', property.id).eq('year', year).eq('month', month).maybeSingle()
     aiInsights = ((existing?.payload as { aiInsights?: AiInsights } | null)?.aiInsights) ?? null
-    aiDebug = 'preserved (withAi=false)'
   }
 
-  const fullPayload = { ...payload, aiInsights, aiDebug }
+  const fullPayload = { ...payload, aiInsights }
 
   const { error } = await supabase.from('monthly_dashboard_cache').upsert(
     { property_id: property.id, year, month, payload: fullPayload, refreshed_at: new Date().toISOString() },
