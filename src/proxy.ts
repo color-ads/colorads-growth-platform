@@ -1,9 +1,8 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request: { headers: request.headers } })
-
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -22,10 +21,8 @@ export async function middleware(request: NextRequest) {
       },
     },
   )
-
   // Refreshes the session and tells us if the user is authenticated
   const { data: { user } } = await supabase.auth.getUser()
-
   const path = request.nextUrl.pathname
   if (!user) {
     // Block admin API with 401
@@ -38,7 +35,6 @@ export async function middleware(request: NextRequest) {
     url.searchParams.set('next', path)
     return NextResponse.redirect(url)
   }
-
   return response
 }
 
