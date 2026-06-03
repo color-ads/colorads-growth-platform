@@ -91,7 +91,7 @@ export function InsightsPanel({ report, property }: InsightsPanelProps) {
             <BarChart3 className="w-4 h-4 text-gray-400" />
             ROI de la inversión
           </h3>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-2">
             <div className="bg-gray-50 rounded-lg p-3">
               <div className="text-[10px] text-gray-400 mb-1">Facturación atribuible</div>
               <div className="text-lg font-medium text-gray-900">{formatCOP(report.attributable_revenue || 0)}</div>
