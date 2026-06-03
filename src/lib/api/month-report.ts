@@ -24,6 +24,24 @@ async function di(apiKey: string, pid: string, reportId: number, body: object) {
   return res.json()
 }
 
+// Lee el sitio web del hotel y devuelve texto plano (recortado). Timeout corto; '' si falla.
+async function fetchSiteText(url: string): Promise<string> {
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 5000)
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'user-agent': 'Mozilla/5.0 (compatible; ColorADSBot/1.0)' },
+    })
+    clearTimeout(timer)
+    if (!res.ok) return ''
+    let html = await res.text()
+    html = html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    const text = html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim()
+    return text.slice(0, 3000)
+  } catch { return '' }
+}
+
 async function bookingStayDistribution(
   apiKey: string, pid: string, year: number, month: number, attrSources: string[],
 ) {
@@ -81,13 +99,12 @@ async function bookingStayDistribution(
   return head
 }
 
-// ─── Conclusiones / propuestas IA ───────────────────────────────────────────────
+// ─── Conclusiones / propuestas IA (consultoria growth hacking) ───────────────────
 type Card = { title: string; body: string }
 type AiInsights = { positive: Card[]; attention: Card[]; strategic: Card[] }
 
-// Devuelve { insights, debug }. "insights" se cachea; "debug" solo se loguea si falla.
 async function generateInsights(ctx: {
-  hotelName: string; year: number; month: number
+  hotelName: string; siteUrl: string; siteText: string; year: number; month: number
   attrRevenue: number; totalInvestment: number; roas: number; adCostPct: number; fee: number; successFeePct: number
   google: number; meta: number; content: number; fees: number; clicks: number; cpc: number; impressions: number
   bookingVolume: number; bookingCount: number; avgTicket: number; avgNights: number
@@ -102,12 +119,15 @@ async function generateInsights(ctx: {
   const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
   const mesNombre = meses[ctx.month - 1] ?? String(ctx.month)
 
-  const prompt = `Sos analista de growth y marketing del canal de VENTA DIRECTA de un hotel (${ctx.hotelName}). Te paso los datos REALES de ${mesNombre} ${ctx.year}. Genera EXACTAMENTE 4 conclusiones/propuestas cortas, concretas y accionables, en espanol, basadas SOLO en estos numeros (no inventes datos ni metricas que no esten aca).
+  const prompt = `Sos consultor senior de growth marketing especializado en hoteleria, parte de la agencia ColorADS. Analizas el canal de VENTA DIRECTA del hotel "${ctx.hotelName}" (sitio web: ${ctx.siteUrl || 'n/d'}) y entregas conclusiones de nivel consultoria: precisas, accionables y con criterio de growth hacking. Esto lo lee el dueno del hotel, asi que tiene que sonar experto y riguroso. REGLA DE ORO: no inventes datos ni cifras de mejora; usa SOLO los numeros que te doy y tu conocimiento de la industria. Nada de obviedades ni de relleno.
 
-Datos del mes:
+CONTEXTO DEL HOTEL (texto extraido de su sitio web):
+${ctx.siteText ? ctx.siteText : '(no se pudo leer el sitio; usa tu conocimiento del hotel y del mercado de El Poblado, Medellin)'}
+
+DATOS REALES DE ${mesNombre} ${ctx.year}:
 - Facturacion atribuible (venta directa generada por el marketing gestionado): ${cop(ctx.attrRevenue)}
 - Inversion total en marketing: ${cop(ctx.totalInvestment)}
-- ROAS: ${ctx.roas.toFixed(1)}x · porcentaje de coste publicitario: ${ctx.adCostPct.toFixed(1)}%
+- ROAS: ${ctx.roas.toFixed(1)}x · coste publicitario: ${ctx.adCostPct.toFixed(1)}%
 - Fee de exito (${ctx.successFeePct}%): ${cop(ctx.fee)}
 - Inversion por canal: Google ${cop(ctx.google)} (${ctx.clicks.toLocaleString()} clics, CPC ${cop(ctx.cpc)}), Meta ${cop(ctx.meta)} (${ctx.impressions.toLocaleString()} impresiones), Contenido ${cop(ctx.content)}, Honorarios ${cop(ctx.fees)}
 - Reservas: ${ctx.bookingCount} reservas por ${cop(ctx.bookingVolume)}, ticket promedio ${cop(ctx.avgTicket)}, estadia promedio ${ctx.avgNights.toFixed(1)} noches
@@ -115,13 +135,19 @@ Datos del mes:
 - Antelacion de reserva (%): ${Object.entries(ctx.leadTime).map(([k, v]) => `${k} ${Number(v).toFixed(0)}%`).join(', ')}
 - Top paises por venta: ${ctx.topCountries.slice(0, 5).map((c) => `${c.country} ${cop(c.revenue)} (${c.pct.toFixed(0)}%)`).join(', ')}
 - Top categorias de habitacion: ${ctx.topRoomTypes.slice(0, 5).map((r) => `${r.category_name} ${cop(r.revenue)}`).join(', ')}
-- Ritmo de venta de reservas (para que meses de estadia se reservo este mes): ${ctx.stayDist.map((s) => `${s.label} ${cop(s.revenue)}${s.self ? ' (mismo mes)' : ''}`).join(', ')}
+- Ritmo de venta de reservas (meses de estadia reservados este mes): ${ctx.stayDist.map((s) => `${s.label} ${cop(s.revenue)}${s.self ? ' (mismo mes)' : ''}`).join(', ')}
 
-Para cada uno de los 4 items elegi un "tone":
-- "good": algo que esta yendo bien (un logro o fortaleza).
-- "watch": algo a vigilar o un riesgo.
-- "action": una propuesta concreta a desarrollar el proximo mes.
-Idealmente ~2 de good/watch y ~2 de action. "title" = titular de 3 a 6 palabras. "body" = 1 o 2 frases concretas, citando el numero relevante cuando ayude. Hablale al dueno del hotel: claro, util y sin jerga tecnica.
+BENCHMARKS DE MERCADO (referencia para evaluar el ROAS contra el mercado):
+- ROAS saludable de venta directa hotelera por paid media: ~8-15x. Menos de 5x es debil; mas de 15x es excelente y suele indicar margen para escalar inversion.
+- Las OTAs (Booking, Expedia) cobran ~15-25% de comision. Cada reserva movida de OTA a venta directa ahorra esa comision: ese es el verdadero valor del canal directo y el angulo central del growth hacking hotelero.
+- Vigila que el CPC no erosione el margen y que el presupuesto este concentrado donde mejor convierte.
+
+TU ENTREGA: EXACTAMENTE 4 items.
+- Al menos 3 deben ser PROPUESTAS ACCIONABLES (tone "action") de growth hacking hotelero, elegidas porque encajan con ESTOS numeros. Menu de ideas (elegi y adapta las que apliquen, no las uses todas): bajar dependencia de OTAs con tarifa o beneficio directo exclusivo; retargeting a visitantes de alta intencion que no reservaron; email/CRM a huespedes pasados; campanas segmentadas por ventana de reserva (lead time); concentrar presupuesto en los mercados de origen de mayor valor; upsell hacia las categorias de mayor ADR; optimizar el funnel de reserva del sitio; best-rate o price-match directo.
+- 1 item puede ser "good" (fortaleza clave del mes) o "watch" (riesgo a vigilar) para dar contexto.
+- En al menos un item evalua EXPLICITAMENTE el ROAS de ${ctx.roas.toFixed(1)}x contra el mercado (por encima/dentro/debajo del rango sano) y traducilo a una accion.
+- Cada item: concreto, especifico a ESTE hotel y atado a un numero real del mes. Sin genericos, sin promesas de resultados garantizados ni cifras de mejora inventadas. "title" = 3 a 6 palabras. "body" = 1 o 2 frases con el dato + la accion.
+- Tono: consultoria profesional, segura y honesta.
 
 Responde SOLO con JSON valido (sin markdown ni texto extra). Forma: un objeto con la clave "items" cuyo valor es un array de EXACTAMENTE 4 objetos, cada uno con las claves "tone" (good|watch|action), "title" (string) y "body" (string).`
 
@@ -131,7 +157,7 @@ Responde SOLO con JSON valido (sin markdown ni texto extra). Forma: un objeto co
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1200, messages: [{ role: 'user', content: prompt }] }),
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] }),
       signal: controller.signal,
     })
     clearTimeout(timer)
@@ -144,14 +170,20 @@ Responde SOLO con JSON valido (sin markdown ni texto extra). Forma: un objeto co
       .filter((b: { type: string }) => b.type === 'text')
       .map((b: { text: string }) => b.text)
       .join('\n')
-    const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim()
+    let jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim()
     let parsed: unknown
-    try { parsed = JSON.parse(jsonStr) } catch { return { insights: null, debug: `PARSE_FAIL raw: ${text.slice(0, 150)}` } }
+    try {
+      parsed = JSON.parse(jsonStr)
+    } catch {
+      const m = jsonStr.match(/\{[\s\S]*\}/)
+      if (!m) return { insights: null, debug: `PARSE_FAIL raw: ${text.slice(0, 150)}` }
+      try { parsed = JSON.parse(m[0]) } catch { return { insights: null, debug: `PARSE_FAIL raw: ${text.slice(0, 150)}` } }
+    }
     const root = parsed as { items?: unknown }
     const items: { tone?: string; title?: string; body?: string }[] = Array.isArray(parsed) ? parsed as [] : ((root.items as []) ?? [])
     const out: AiInsights = { positive: [], attention: [], strategic: [] }
     for (const it of items) {
-      const card: Card = { title: String(it.title ?? '').slice(0, 90), body: String(it.body ?? '').slice(0, 320) }
+      const card: Card = { title: String(it.title ?? '').slice(0, 90), body: String(it.body ?? '').slice(0, 340) }
       if (!card.title && !card.body) continue
       if (it.tone === 'good') out.positive.push(card)
       else if (it.tone === 'watch') out.attention.push(card)
@@ -190,8 +222,10 @@ export async function buildMonthReport(slug: string, year: number, month: number
 
   const attrSources = property.attributable_sources ?? []
   const propertyId  = property.cloudbeds_property_id ?? '212206'
+  // Sitio del hotel (por ahora solo h98). Se lee en paralelo, no agrega latencia.
+  const siteUrl = slug === 'h98' ? 'https://hashtag98.com.co/' : ''
 
-  const [insightsMetrics, arrivals, countryProduction, stayDist] = await Promise.all([
+  const [insightsMetrics, arrivals, countryProduction, stayDist, siteText] = await Promise.all([
     getInsightsBookingMetrics(apiKey, propertyId, year, month, attrSources),
     getReservations(apiKey, {
       checkInFrom: `${year}-${pad(month)}-01`,
@@ -200,6 +234,7 @@ export async function buildMonthReport(slug: string, year: number, month: number
     }),
     getProductionByCountry(apiKey, propertyId, year, month, attrSources),
     bookingStayDistribution(apiKey, propertyId, year, month, attrSources),
+    siteUrl ? fetchSiteText(siteUrl) : Promise.resolve(''),
   ])
 
   let guests = 0, nights = 0
@@ -257,7 +292,7 @@ export async function buildMonthReport(slug: string, year: number, month: number
 
     const totalInvestment = Number(billing.total_investment) || 0
     const r = await generateInsights({
-      hotelName: property.name, year, month,
+      hotelName: property.name, siteUrl, siteText, year, month,
       attrRevenue, totalInvestment,
       roas: totalInvestment > 0 ? attrRevenue / totalInvestment : 0,
       adCostPct: attrRevenue > 0 ? (totalInvestment / attrRevenue) * 100 : 0,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { buildMonthReport } from '@/lib/api/month-report'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 // Wrapper HTTP de buildMonthReport. Lo usa el boton "Actualizar" del dashboard
 // para forzar el recalculo de un mes (buildMonthReport reescribe la cache).
