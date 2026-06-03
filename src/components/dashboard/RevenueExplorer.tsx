@@ -51,8 +51,15 @@ const barLabel = (props: any) => {
 // Read-only charts. The attributable source list is configured by growth in /admin.
 export function RevenueExplorer({ rows, attributable }: Props) {
   const months = useMemo(() => {
+    // Cortar en el mes en curso: no mostrar meses futuros (aún no cerrados / sin reservas).
+    // Dinámico: se auto-avanza cada mes, sin hardcodear.
+    const now = new Date()
+    const cutoff = now.getFullYear() * 12 + now.getMonth()   // mes actual, 0-indexed
     const s = new Set<string>()
-    for (const r of rows) s.add(`${r.year}-${String(r.month).padStart(2, '0')}`)
+    for (const r of rows) {
+      if (r.year * 12 + (r.month - 1) > cutoff) continue      // descarta meses futuros
+      s.add(`${r.year}-${String(r.month).padStart(2, '0')}`)
+    }
     return [...s].sort()
   }, [rows])
 
