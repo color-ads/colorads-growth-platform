@@ -9,11 +9,12 @@ import { InsightsPanel, ChannelBreakdown } from '@/components/dashboard/Insights
 import type { MonthlyReport, Property } from '@/types'
 import { MonthSelector } from '@/components/dashboard/MonthSelector'
 import { RefreshButton } from '@/components/dashboard/RefreshButton'
+import { BookingPaceChart, type StayBucket } from '@/components/dashboard/BookingPaceChart'
 import { buildMonthReport } from '@/lib/api/month-report'
 
 // ─── Fetch & Map ──────────────────────────────────────────────────────────────
 
-async function getCurrentMonthReport(year: number, month: number): Promise<MonthlyReport | null> {
+async function getCurrentMonthReport(year: number, month: number): Promise<{ report: MonthlyReport; stayDistribution: StayBucket[] } | null> {
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
@@ -23,9 +24,9 @@ async function getCurrentMonthReport(year: number, month: number): Promise<Month
     const { data: prop } = await supabase.from('properties').select('id').eq('slug', 'h98').single()
     if (!prop) return null
 
-    // Metricas de Cloudbeds (huespedes, noches, pais, tortas): se leen de la cache.
-    // Si el mes todavia no esta cacheado, se arma una vez (y queda guardado) -> self-heal.
-    // El dashboard ya NO pega a Cloudbeds en cada carga: por eso es instantaneo.
+    // Metricas + distribucion de reservas: de la cache; si falta (o es una cache vieja sin
+    // la distribucion), se arma una vez y queda guardado -> self-heal. Sin pegarle a Cloudbeds
+    // en cada carga.
     const { data: cacheRow } = await supabase
       .from('monthly_dashboard_cache')
       .select('payload, refreshed_at')
@@ -33,11 +34,13 @@ async function getCurrentMonthReport(year: number, month: number): Promise<Month
       .maybeSingle()
 
     let m = cacheRow?.payload?.metrics
+    let dist = cacheRow?.payload?.bookingStayDistribution
     let refreshedAt: string = cacheRow?.refreshed_at ?? new Date().toISOString()
-    if (!m) {
+    if (!m || dist === undefined) {
       const built = await buildMonthReport('h98', year, month)
       if (!built) return null
       m = built.metrics
+      dist = built.bookingStayDistribution ?? []
       refreshedAt = new Date().toISOString()
     }
 
@@ -50,7 +53,7 @@ async function getCurrentMonthReport(year: number, month: number): Promise<Month
       content_investment: 0, fees: 0, impressions: 0, clicks: 0, cpc: 0,
     }
 
-    return {
+    const report: MonthlyReport = {
       id: `${year}-${month}`,
       property_id: 'h98',
       period_start: `${year}-${String(month).padStart(2,'0')}-01`,
@@ -111,6 +114,7 @@ async function getCurrentMonthReport(year: number, month: number): Promise<Month
       created_at:          new Date().toISOString(),
       updated_at:          refreshedAt,
     }
+    return { report, stayDistribution: (dist ?? []) as StayBucket[] }
   } catch {
     return null
   }
@@ -237,11 +241,13 @@ export default async function DashboardPage({
     .toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })
     .replace(/^\w/, (c) => c.toUpperCase())
 
-  const [currentReport, historical, sourceData] = await Promise.all([
+  const [currentData, historical, sourceData] = await Promise.all([
     getCurrentMonthReport(selYear, selMonth),
     getHistoricalReports(),
     getSourceData(),
   ])
+  const currentReport = currentData?.report ?? null
+  const stayDistribution: StayBucket[] = currentData?.stayDistribution ?? []
 
   // Facturacion + ROAS come from Cloudbeds (monthly_source_revenue), not the sheet.
   // Investment stays from monthly_billing (admin). ROAS = attributable facturacion / investment.
@@ -340,6 +346,7 @@ export default async function DashboardPage({
                 attributable={sourceData.attributable}
                 property={property}
               />
+              <BookingPaceChart distribution={stayDistribution} monthLabel={periodLabel} />
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="xl:col-span-2 space-y-6">
                   <DemographicProfile report={currentReport} historicalReports={historical} property={property} />
