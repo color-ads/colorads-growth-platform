@@ -82,8 +82,6 @@ async function bookingStayDistribution(
 }
 
 // ─── Base de conocimiento del hotel (estable, reutilizada en cada generacion) ────
-// No se vuelve a leer la web en cada corrida; esto es la base curada. Se puede ampliar
-// luego con un pase de investigacion web (competencia, referencias) guardado aca.
 const HOTEL_KB: Record<string, string> = {
   h98: `HOTEL: Hashtag 98 Hotel, en El Poblado, Medellin, Colombia (sitio: hashtag98.com.co). Canal analizado: VENTA DIRECTA (reservas por canales propios) frente a las OTAs.
 
@@ -96,12 +94,22 @@ CONTEXTO DE MERCADO: El Poblado es la zona prime de Medellin para turismo, vida 
 PALANCAS DE GROWTH HACKING HOTELERO (elegir las que encajen con los datos del mes): mover demanda de OTA a directo con tarifa o beneficio directo exclusivo; garantia de mejor precio directo; remarketing a visitantes de alta intencion que no reservaron; email/CRM a huespedes pasados; campanas por ventana de reserva (lead time) priorizando last-minute en destino; concentrar presupuesto en los mercados de origen de mayor valor (entre los que ya estan en el pais); upsell hacia las categorias de mayor ADR; optimizar el funnel de reserva del sitio.`,
 }
 
-// ─── Conclusiones / propuestas IA (consultoria growth hacking) ───────────────────
+// ─── Conclusiones / propuestas IA (ciclo mensual de experimentacion) ─────────────
 type Card = { title: string; body: string }
 type AiInsights = { positive: Card[]; attention: Card[]; strategic: Card[] }
 
+// Formatea las propuestas del mes anterior (para el look-back).
+function formatPriorProposals(ai: AiInsights | null): string {
+  if (!ai) return ''
+  const lines: string[] = []
+  for (const c of (ai.positive || [])) lines.push(`[fortaleza] ${c.title}: ${c.body}`)
+  for (const c of (ai.attention || [])) lines.push(`[a vigilar] ${c.title}: ${c.body}`)
+  for (const c of (ai.strategic || [])) lines.push(`[propuesta] ${c.title}: ${c.body}`)
+  return lines.join('\n')
+}
+
 async function generateInsights(ctx: {
-  hotelName: string; knowledgeBase: string; year: number; month: number
+  hotelName: string; knowledgeBase: string; priorProposals: string; year: number; month: number
   attrRevenue: number; totalInvestment: number; roas: number; adCostPct: number; fee: number; successFeePct: number
   google: number; meta: number; content: number; fees: number; clicks: number; cpc: number; impressions: number
   bookingVolume: number; bookingCount: number; avgTicket: number; avgNights: number
@@ -118,8 +126,13 @@ async function generateInsights(ctx: {
 
   const prompt = `Sos consultor senior de growth marketing hotelero de la agencia ColorADS. Entregas conclusiones de nivel consultoria sobre el canal de VENTA DIRECTA del hotel: precisas, accionables y honestas. Las lee el dueno del hotel, asi que deben sonar expertas y dejar bien parado el trabajo de la agencia. REGLA DE ORO: no inventes datos ni cifras de mejora; usa SOLO los numeros del mes que te doy, tu base de conocimiento y criterio profesional.
 
+El analisis es un CICLO MENSUAL de experimentacion: cada mes cerramos con lo aprendido y planteamos hipotesis para probar el mes siguiente; al mes siguiente evaluamos si funcionaron.
+
 === BASE DE CONOCIMIENTO DEL HOTEL Y SU ESTRATEGIA ===
 ${ctx.knowledgeBase || '(sin base; usa criterio general de marketing hotelero y la premisa de captar extranjeros YA presentes en el pais, nunca campanas al exterior)'}
+
+=== PROPUESTAS DEL MES ANTERIOR (lo que planteamos probar este mes) ===
+${ctx.priorProposals || '(no hay analisis del mes anterior; este es el punto de partida del ciclo)'}
 
 === DATOS REALES DE ${mesNombre} ${ctx.year} ===
 - Facturacion atribuible (venta directa generada por el marketing): ${cop(ctx.attrRevenue)}
@@ -136,11 +149,12 @@ ${ctx.knowledgeBase || '(sin base; usa criterio general de marketing hotelero y 
 
 === REGLAS DE LA ENTREGA ===
 - EXACTAMENTE 4 items.
-- Al menos 3 son PROPUESTAS ACCIONABLES (tone "action") tomadas de las palancas de la base de conocimiento, elegidas porque encajan con ESTOS numeros y RESPETANDO la premisa de targeting (captar extranjeros ya en el pais; jamas proponer campanas costosas al exterior).
-- 1 item puede ser "good" (fortaleza clave del mes) o "watch" (riesgo a vigilar).
+- SI hay propuestas del mes anterior: dedica 1 o 2 items a EVALUAR si esas propuestas funcionaron, mirando como se movieron los numeros de este mes ("good" si funciono, "watch" si no rindio o sigue pendiente). Se honesto: si algo no se movio, decilo claramente.
+- Los items restantes (al menos 2) son PROPUESTAS/EXPERIMENTOS para probar el PROXIMO mes ("action"), de las palancas de la base de conocimiento, atados a estos numeros y respetando la premisa de targeting (extranjeros ya en el pais; jamas campanas al exterior). Planteales como hipotesis: que vamos a probar y que esperamos que mueva.
+- SI NO hay propuestas del mes anterior: los 4 son propuestas/experimentos para el proximo mes (3-4 "action", como mucho 1 "good"/"watch" de contexto).
 - En al menos un item evalua el ROAS de ${ctx.roas.toFixed(1)}x usando el benchmark de comision OTA de la base de conocimiento (no rangos genericos) y traducilo a una accion.
 - Cada item atado a un numero real del mes. Nada generico, sin promesas garantizadas ni cifras inventadas.
-- LARGO (importante, el texto va en tarjetas): "title" 3 a 6 palabras. "body" CONCISO: 1 o 2 frases, MAXIMO ~45 palabras. No te excedas.
+- LARGO (el texto va en tarjetas): "title" 3 a 6 palabras. "body" CONCISO: 1 o 2 frases, MAXIMO ~45 palabras.
 - Tono: consultoria profesional, segura y honesta.
 
 Responde SOLO con JSON valido (sin markdown ni texto extra): un objeto con la clave "items" cuyo valor es un array de EXACTAMENTE 4 objetos, cada uno con las claves "tone" (good|watch|action), "title" (string) y "body" (string).`
@@ -191,7 +205,7 @@ Responde SOLO con JSON valido (sin markdown ni texto extra): un objeto con la cl
   }
 }
 
-export async function buildMonthReport(slug: string, year: number, month: number, opts: { withAi?: boolean } = {}) {
+export async function buildMonthReport(slug: string, year: number, month: number, opts: { withAi?: boolean; force?: boolean } = {}) {
   const apiKey = process.env.CLOUDBEDS_API_KEY
   if (!apiKey) throw new Error('CLOUDBEDS_API_KEY not configured')
 
@@ -270,38 +284,59 @@ export async function buildMonthReport(slug: string, year: number, month: number
     _meta: { arrivals: arrivals.length, bookingCount: insightsMetrics.bookingCount, geoCountries: countryProduction.length, geoTotal: Math.round(totalCountryRevenue), dataSource: 'insights+pms+supabase' },
   }
 
-  // ── Conclusiones/propuestas IA (4 items), cacheadas. Solo en withAi (refresh/cron).
+  // ── Conclusiones IA: ciclo mensual. Mes cerrado con analisis -> se congela (salvo force).
   const withAi = opts.withAi !== false
+  const force = opts.force === true
   let aiInsights: AiInsights | null = null
   if (withAi) {
-    let attrRevenue = 0
-    const attrSet = new Set(attrSources)
-    const { data: srcRows } = await supabase.from('monthly_source_revenue')
-      .select('source,stay_revenue').eq('property_id', property.id).eq('year', year).eq('month', month)
-    for (const r of (srcRows ?? [])) if (attrSet.has(r.source)) attrRevenue += Number(r.stay_revenue) || 0
-    attrRevenue = Math.round(attrRevenue)
+    const { data: existingRow } = await supabase.from('monthly_dashboard_cache')
+      .select('payload').eq('property_id', property.id).eq('year', year).eq('month', month).maybeSingle()
+    const existingAi = ((existingRow?.payload as { aiInsights?: AiInsights } | null)?.aiInsights) ?? null
 
-    const totalInvestment = Number(billing.total_investment) || 0
-    const r = await generateInsights({
-      hotelName: property.name, knowledgeBase: HOTEL_KB[slug] ?? '', year, month,
-      attrRevenue, totalInvestment,
-      roas: totalInvestment > 0 ? attrRevenue / totalInvestment : 0,
-      adCostPct: attrRevenue > 0 ? (totalInvestment / attrRevenue) * 100 : 0,
-      fee: Math.round((attrRevenue * (Number(property.success_fee_pct) || 0)) / 100),
-      successFeePct: Number(property.success_fee_pct) || 0,
-      google: Number(billing.google_investment) || 0, meta: Number(billing.meta_investment) || 0,
-      content: Number(billing.content_investment) || 0, fees: Number(billing.fees) || 0,
-      clicks: Number(billing.clicks) || 0, cpc: Number(billing.cpc) || 0, impressions: Number(billing.impressions) || 0,
-      bookingVolume: payload.metrics.bookingVolume, bookingCount: payload.metrics.bookingCount,
-      avgTicket: insightsMetrics.avgTicket, avgNights: insightsMetrics.avgNightsPerBooking,
-      reservationStatus: insightsMetrics.reservationStatus as unknown as Record<string, number>,
-      leadTime: insightsMetrics.leadTime as unknown as Record<string, number>,
-      topCountries: geoBreakdown.map((g) => ({ country: g.country, revenue: g.revenue, pct: g.pct })),
-      topRoomTypes: roomBreakdown.map((r) => ({ category_name: r.category_name, revenue: r.revenue, pct: r.pct })),
-      stayDist: stayDist.map((s) => ({ label: s.label, revenue: s.revenue, self: s.self })),
-    })
-    aiInsights = r.insights
-    if (!aiInsights) console.error('[buildMonthReport] insights null:', r.debug)
+    const now = new Date()
+    const isPastMonth = year < now.getFullYear() || (year === now.getFullYear() && month < now.getMonth() + 1)
+
+    if (isPastMonth && existingAi && !force) {
+      // Mes cerrado con analisis ya hecho: congelado (registro de hipotesis). No regenerar.
+      aiInsights = existingAi
+    } else {
+      // Look-back: propuestas del mes anterior (de la cache).
+      const pm = month === 1 ? 12 : month - 1
+      const py = month === 1 ? year - 1 : year
+      const { data: prevRow } = await supabase.from('monthly_dashboard_cache')
+        .select('payload').eq('property_id', property.id).eq('year', py).eq('month', pm).maybeSingle()
+      const prevAi = ((prevRow?.payload as { aiInsights?: AiInsights } | null)?.aiInsights) ?? null
+
+      let attrRevenue = 0
+      const attrSet = new Set(attrSources)
+      const { data: srcRows } = await supabase.from('monthly_source_revenue')
+        .select('source,stay_revenue').eq('property_id', property.id).eq('year', year).eq('month', month)
+      for (const r of (srcRows ?? [])) if (attrSet.has(r.source)) attrRevenue += Number(r.stay_revenue) || 0
+      attrRevenue = Math.round(attrRevenue)
+
+      const totalInvestment = Number(billing.total_investment) || 0
+      const r = await generateInsights({
+        hotelName: property.name, knowledgeBase: HOTEL_KB[slug] ?? '',
+        priorProposals: formatPriorProposals(prevAi),
+        year, month, attrRevenue, totalInvestment,
+        roas: totalInvestment > 0 ? attrRevenue / totalInvestment : 0,
+        adCostPct: attrRevenue > 0 ? (totalInvestment / attrRevenue) * 100 : 0,
+        fee: Math.round((attrRevenue * (Number(property.success_fee_pct) || 0)) / 100),
+        successFeePct: Number(property.success_fee_pct) || 0,
+        google: Number(billing.google_investment) || 0, meta: Number(billing.meta_investment) || 0,
+        content: Number(billing.content_investment) || 0, fees: Number(billing.fees) || 0,
+        clicks: Number(billing.clicks) || 0, cpc: Number(billing.cpc) || 0, impressions: Number(billing.impressions) || 0,
+        bookingVolume: payload.metrics.bookingVolume, bookingCount: payload.metrics.bookingCount,
+        avgTicket: insightsMetrics.avgTicket, avgNights: insightsMetrics.avgNightsPerBooking,
+        reservationStatus: insightsMetrics.reservationStatus as unknown as Record<string, number>,
+        leadTime: insightsMetrics.leadTime as unknown as Record<string, number>,
+        topCountries: geoBreakdown.map((g) => ({ country: g.country, revenue: g.revenue, pct: g.pct })),
+        topRoomTypes: roomBreakdown.map((r) => ({ category_name: r.category_name, revenue: r.revenue, pct: r.pct })),
+        stayDist: stayDist.map((s) => ({ label: s.label, revenue: s.revenue, self: s.self })),
+      })
+      aiInsights = r.insights ?? existingAi   // si falla la generacion, no borrar lo que habia
+      if (!r.insights) console.error('[buildMonthReport] insights null:', r.debug)
+    }
   } else {
     const { data: existing } = await supabase.from('monthly_dashboard_cache')
       .select('payload').eq('property_id', property.id).eq('year', year).eq('month', month).maybeSingle()

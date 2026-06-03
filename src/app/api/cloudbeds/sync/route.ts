@@ -4,15 +4,16 @@ import { buildMonthReport } from '@/lib/api/month-report'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-// Wrapper HTTP de buildMonthReport. Lo usa el boton "Actualizar" del dashboard
-// para forzar el recalculo de un mes (buildMonthReport reescribe la cache).
+// Wrapper HTTP de buildMonthReport. Lo usa el boton "Actualizar".
+// ?force=1 regenera el analisis aunque el mes este cerrado (congelado).
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const slug  = searchParams.get('slug')  ?? 'h98'
     const year  = parseInt(searchParams.get('year')  ?? '2026')
     const month = parseInt(searchParams.get('month') ?? '4')
-    const payload = await buildMonthReport(slug, year, month)
+    const force = (searchParams.get('force') ?? '') === '1'
+    const payload = await buildMonthReport(slug, year, month, { force })
     return NextResponse.json(payload)
   } catch (e: unknown) {
     const err = e instanceof Error ? e : new Error(String(e))
