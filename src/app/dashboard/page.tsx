@@ -8,20 +8,47 @@ import { DemographicProfile } from '@/components/dashboard/DemographicProfile'
 import { InsightsPanel, ChannelBreakdown } from '@/components/dashboard/InsightsPanel'
 import type { MonthlyReport, Property } from '@/types'
 import { MonthSelector } from '@/components/dashboard/MonthSelector'
+import { RefreshButton } from '@/components/dashboard/RefreshButton'
+import { buildMonthReport } from '@/lib/api/month-report'
 
 // ─── Fetch & Map ──────────────────────────────────────────────────────────────
 
 async function getCurrentMonthReport(year: number, month: number): Promise<MonthlyReport | null> {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-    const res = await fetch(
-      `${baseUrl}/api/cloudbeds/sync?slug=h98&year=${year}&month=${month}`,
-      { cache: 'no-store' },
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+      { auth: { persistSession: false, autoRefreshToken: false } },
     )
-    if (!res.ok) return null
-    const d = await res.json()
-    const m = d.metrics
-    const b = d.billing
+    const { data: prop } = await supabase.from('properties').select('id').eq('slug', 'h98').single()
+    if (!prop) return null
+
+    // Metricas de Cloudbeds (huespedes, noches, pais, tortas): se leen de la cache.
+    // Si el mes todavia no esta cacheado, se arma una vez (y queda guardado) -> self-heal.
+    // El dashboard ya NO pega a Cloudbeds en cada carga: por eso es instantaneo.
+    const { data: cacheRow } = await supabase
+      .from('monthly_dashboard_cache')
+      .select('payload, refreshed_at')
+      .eq('property_id', prop.id).eq('year', year).eq('month', month)
+      .maybeSingle()
+
+    let m = cacheRow?.payload?.metrics
+    let refreshedAt: string = cacheRow?.refreshed_at ?? new Date().toISOString()
+    if (!m) {
+      const built = await buildMonthReport('h98', year, month)
+      if (!built) return null
+      m = built.metrics
+      refreshedAt = new Date().toISOString()
+    }
+
+    // Inversion / marketing: SIEMPRE en vivo desde monthly_billing (lo edita el admin),
+    // asi un cambio de inversion se refleja al instante sin esperar al cron.
+    const { data: billingRow } = await supabase.from('monthly_billing').select('*')
+      .eq('property_id', prop.id).eq('year', year).eq('month', month).maybeSingle()
+    const b = billingRow ?? {
+      total_investment: 0, ad_cost_pct: 0, roas: 0, google_investment: 0, meta_investment: 0,
+      content_investment: 0, fees: 0, impressions: 0, clicks: 0, cpc: 0,
+    }
 
     return {
       id: `${year}-${month}`,
@@ -32,22 +59,22 @@ async function getCurrentMonthReport(year: number, month: number): Promise<Month
       year,
       total_guests:        m.guests,
       total_nights:        m.nights,
-      total_investment:    b.totalInvestment,
-      ad_cost_pct:         b.adCostPct,
+      total_investment:    b.total_investment ?? 0,
+      ad_cost_pct:         b.ad_cost_pct ?? 0,
       attributable_revenue: 0,   // lo fija facturacionForMonth (abajo) desde monthly_source_revenue
-      total_hotel_revenue:  0,   // idem — el sync ya no calcula facturación
+      total_hotel_revenue:  0,   // idem - el sync ya no calcula facturacion
       total_bookings:      m.bookingCount,
       booking_volume:      m.bookingVolume,
       avg_ticket:          m.avgTicket,
       avg_stay:            m.avgNightsPerBooking,
-      roas:                b.roas,
-      google_investment:   b.googleInvestment,
-      meta_investment:     b.metaInvestment,
-      content_investment:  b.contentInvestment,
-      fees_investment:     b.fees,
-      total_impressions:   b.impressions,
-      total_clicks:        b.clicks,
-      avg_cpc:             b.cpc,
+      roas:                b.roas ?? 0,
+      google_investment:   b.google_investment ?? 0,
+      meta_investment:     b.meta_investment ?? 0,
+      content_investment:  b.content_investment ?? 0,
+      fees_investment:     b.fees ?? 0,
+      total_impressions:   b.impressions ?? 0,
+      total_clicks:        b.clicks ?? 0,
+      avg_cpc:             b.cpc ?? 0,
       geo_breakdown: (m.topCountries || []).map((c: { country: string; country_code: string; revenue: number; bookings: number; pct: number }) => ({
         country:      c.country,
         country_code: c.country_code,
@@ -82,7 +109,7 @@ async function getCurrentMonthReport(year: number, month: number): Promise<Month
       status:              'published',
       published_at:        new Date().toISOString(),
       created_at:          new Date().toISOString(),
-      updated_at:          new Date().toISOString(),
+      updated_at:          refreshedAt,
     }
   } catch {
     return null
@@ -172,7 +199,7 @@ async function getSourceData(): Promise<{ rows: SourceRow[]; attributable: strin
 }
 
 
-// Computes facturación (Cloudbeds room_revenue by stay date) for a month:
+// Computes facturacion (Cloudbeds room_revenue by stay date) for a month:
 // attributable = selected sources, total = all sources.
 function facturacionForMonth(
   rows: SourceRow[], attributable: string[], year: number, month: number,
@@ -199,7 +226,7 @@ export default async function DashboardPage({
   const nowY = now.getFullYear()
   const nowM = now.getMonth() + 1
 
-  // Mes a analizar (de la URL: ?y=YYYY&m=MM). Default: el último mes (mes en curso).
+  // Mes a analizar (de la URL: ?y=YYYY&m=MM). Default: el ultimo mes (mes en curso).
   let selYear  = parseInt(sp.y ?? '') || nowY
   let selMonth = parseInt(sp.m ?? '') || nowM
   if (selMonth < 1 || selMonth > 12) selMonth = nowM
@@ -216,8 +243,8 @@ export default async function DashboardPage({
     getSourceData(),
   ])
 
-  // Facturación + ROAS come from Cloudbeds (monthly_source_revenue), not the sheet.
-  // Investment stays from monthly_billing (admin). ROAS = attributable facturación ÷ investment.
+  // Facturacion + ROAS come from Cloudbeds (monthly_source_revenue), not the sheet.
+  // Investment stays from monthly_billing (admin). ROAS = attributable facturacion / investment.
   for (const r of historical) {
     const f = facturacionForMonth(sourceData.rows, sourceData.attributable, r.year!, r.month!)
     r.attributable_revenue = f.attributable_revenue
@@ -244,6 +271,13 @@ export default async function DashboardPage({
   // Mes anterior al seleccionado (para los deltas del KPIStrip)
   const prevIdx = selYear * 12 + (selMonth - 1) - 1
   const prevReport = historical.find((r) => r.year! * 12 + (r.month! - 1) === prevIdx) ?? null
+
+  // "Actualizado: ..." - cuando se refresco la cache de Cloudbeds de este mes.
+  const refreshedLabel = currentReport?.updated_at
+    ? new Date(currentReport.updated_at).toLocaleString('es-CO', {
+        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+      })
+    : null
 
   const property: Property = {
     id:                  'h98',
@@ -280,6 +314,10 @@ export default async function DashboardPage({
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {refreshedLabel && (
+              <span className="text-[11px] text-gray-400">Actualizado: {refreshedLabel}</span>
+            )}
+            <RefreshButton year={selYear} month={selMonth} />
             <MonthSelector year={nowY} upTo={nowM} selected={selYear === nowY ? selMonth : 0} />
           </div>
         </header>

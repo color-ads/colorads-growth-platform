@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { buildMonthReport } from '@/lib/api/month-report'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -20,7 +21,7 @@ async function di(apiKey: string, pid: string, reportId: number, body: object) {
     headers: { Authorization: `Bearer ${apiKey}`, 'X-PROPERTY-ID': pid, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`report ${reportId} → ${res.status}: ${(await res.text()).slice(0, 150)}`)
+  if (!res.ok) throw new Error(`report ${reportId} -> ${res.status}: ${(await res.text()).slice(0, 150)}`)
   return res.json()
 }
 
@@ -102,17 +103,23 @@ export async function GET(req: NextRequest) {
   if (!prop) return NextResponse.json({ error: 'property not found' }, { status: 404 })
   const pid = prop.cloudbeds_property_id ?? '212206'
 
-  // Rolling window: from (now − back) to (now + ahead). Older months are frozen.
+  // Rolling window: from (now - back) to (now + ahead). Older months are frozen.
   const back = parseInt(searchParams.get('back') ?? '2')
   const ahead = parseInt(searchParams.get('ahead') ?? '6')
   const now = new Date()
+  const nowKey = now.getFullYear() * 12 + (now.getMonth() + 1)
   const months: [number, number][] = []
   for (let off = -back; off <= ahead; off++) {
     const d = new Date(now.getFullYear(), now.getMonth() + off, 1)
     months.push([d.getFullYear(), d.getMonth() + 1])
   }
 
-  const results: Record<string, { fact: number; vol: number; src: number }> = {}
+  // Que meses ya tienen cache del dashboard (para no recalcular meses cerrados).
+  const { data: cachedRows } = await supabase
+    .from('monthly_dashboard_cache').select('year, month').eq('property_id', prop.id)
+  const cachedSet = new Set((cachedRows ?? []).map((r: { year: number; month: number }) => `${r.year}-${r.month}`))
+
+  const results: Record<string, { fact: number; vol: number; src: number; cached?: boolean }> = {}
   for (const [year, month] of months) {
     const key = `${year}-${pad(month)}`
     try {
@@ -142,6 +149,19 @@ export async function GET(req: NextRequest) {
         fact: rows.reduce((a, r) => a + r.stay_revenue, 0),
         vol: rows.reduce((a, r) => a + r.booking_volume, 0),
         src: rows.length,
+      }
+
+      // Cache del dashboard (payload por mes). Regla: mes en curso y anterior SIEMPRE;
+      // meses cerrados solo si faltan; meses futuros nunca (el dashboard no los muestra).
+      const mk = year * 12 + month
+      if (mk <= nowKey && (mk >= nowKey - 1 || !cachedSet.has(`${year}-${month}`))) {
+        try {
+          await buildMonthReport(slug, year, month)
+          results[key].cached = true
+        } catch (e) {
+          results[key].cached = false
+          console.error(`[cron sync-sources] cache ${key}:`, e)
+        }
       }
     } catch (e) {
       results[key] = { fact: -1, vol: -1, src: 0 }
