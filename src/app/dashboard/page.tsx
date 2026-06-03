@@ -7,9 +7,7 @@ import { RevenueExplorer, type SourceRow } from '@/components/dashboard/RevenueE
 import { DemographicProfile } from '@/components/dashboard/DemographicProfile'
 import { InsightsPanel, ChannelBreakdown } from '@/components/dashboard/InsightsPanel'
 import type { MonthlyReport, Property } from '@/types'
-import Link from 'next/link'
-
-const MONTHS_ES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+import { MonthSelector } from '@/components/dashboard/MonthSelector'
 
 // ─── Fetch & Map ──────────────────────────────────────────────────────────────
 
@@ -282,24 +280,7 @@ export default async function DashboardPage({
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-              {Array.from({ length: nowM }, (_, i) => i + 1).map((m) => {
-                const active = selYear === nowY && selMonth === m
-                return (
-                  <Link
-                    key={m}
-                    href={`/dashboard?y=${nowY}&m=${m}`}
-                    className={`px-3 py-1 rounded-md text-[12px] transition-all ${
-                      active
-                        ? 'bg-white text-gray-900 font-medium shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    {MONTHS_ES[m - 1]}
-                  </Link>
-                )
-              })}
-            </div>
+            <MonthSelector year={nowY} upTo={nowM} selected={selYear === nowY ? selMonth : 0} />
           </div>
         </header>
 
