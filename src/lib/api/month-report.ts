@@ -24,24 +24,6 @@ async function di(apiKey: string, pid: string, reportId: number, body: object) {
   return res.json()
 }
 
-// Lee el sitio web del hotel y devuelve texto plano (recortado). Timeout corto; '' si falla.
-async function fetchSiteText(url: string): Promise<string> {
-  try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 5000)
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: { 'user-agent': 'Mozilla/5.0 (compatible; ColorADSBot/1.0)' },
-    })
-    clearTimeout(timer)
-    if (!res.ok) return ''
-    let html = await res.text()
-    html = html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    const text = html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim()
-    return text.slice(0, 3000)
-  } catch { return '' }
-}
-
 async function bookingStayDistribution(
   apiKey: string, pid: string, year: number, month: number, attrSources: string[],
 ) {
@@ -99,12 +81,27 @@ async function bookingStayDistribution(
   return head
 }
 
+// ─── Base de conocimiento del hotel (estable, reutilizada en cada generacion) ────
+// No se vuelve a leer la web en cada corrida; esto es la base curada. Se puede ampliar
+// luego con un pase de investigacion web (competencia, referencias) guardado aca.
+const HOTEL_KB: Record<string, string> = {
+  h98: `HOTEL: Hashtag 98 Hotel, en El Poblado, Medellin, Colombia (sitio: hashtag98.com.co). Canal analizado: VENTA DIRECTA (reservas por canales propios) frente a las OTAs.
+
+PREMISA CLAVE DE TARGETING (respetar SIEMPRE): el publico objetivo son EXTRANJEROS QUE YA ESTAN EN COLOMBIA / en Medellin: demanda en destino, alta intencion y ventana de reserva corta. Hacer campanas hacia el exterior (extranjeros en su pais de origen) es CARO y de retorno muy bajo; NO proponer eso. Toda propuesta de captacion debe enfocarse en quienes ya estan en el pais/ciudad: geolocalizacion dentro de Colombia, remarketing de alta intencion, last-minute, y presencia en los momentos de decision en destino.
+
+BENCHMARK ESTABLE (propio de marketing hotelero; usar este, NO 'rangos de ROAS' genericos de internet): el costo de referencia es la COMISION DE OTAs. Booking.com y Expedia cobran aprox. 15-20% del valor de la reserva (hasta ~25% con programas de visibilidad). El canal directo es rentable mientras el costo de adquisicion directo (coste publicitario como % de la venta directa) se mantenga POR DEBAJO de esa comision. Equivalencia util: una comision de ~18% equivale a un ROAS de break-even de ~5.5x; por encima de ~6x el canal directo ya es claramente mas rentable que vender por OTA. Al evaluar el ROAS, anclalo SIEMPRE a esta logica (cuanta comision OTA estamos ahorrando), nunca a cifras de industria inventadas.
+
+CONTEXTO DE MERCADO: El Poblado es la zona prime de Medellin para turismo, vida nocturna, nomadas digitales/expats y negocios; alto volumen de visitantes extranjeros y fuerte demanda de ultimo momento ya en destino.
+
+PALANCAS DE GROWTH HACKING HOTELERO (elegir las que encajen con los datos del mes): mover demanda de OTA a directo con tarifa o beneficio directo exclusivo; garantia de mejor precio directo; remarketing a visitantes de alta intencion que no reservaron; email/CRM a huespedes pasados; campanas por ventana de reserva (lead time) priorizando last-minute en destino; concentrar presupuesto en los mercados de origen de mayor valor (entre los que ya estan en el pais); upsell hacia las categorias de mayor ADR; optimizar el funnel de reserva del sitio.`,
+}
+
 // ─── Conclusiones / propuestas IA (consultoria growth hacking) ───────────────────
 type Card = { title: string; body: string }
 type AiInsights = { positive: Card[]; attention: Card[]; strategic: Card[] }
 
 async function generateInsights(ctx: {
-  hotelName: string; siteUrl: string; siteText: string; year: number; month: number
+  hotelName: string; knowledgeBase: string; year: number; month: number
   attrRevenue: number; totalInvestment: number; roas: number; adCostPct: number; fee: number; successFeePct: number
   google: number; meta: number; content: number; fees: number; clicks: number; cpc: number; impressions: number
   bookingVolume: number; bookingCount: number; avgTicket: number; avgNights: number
@@ -119,15 +116,15 @@ async function generateInsights(ctx: {
   const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
   const mesNombre = meses[ctx.month - 1] ?? String(ctx.month)
 
-  const prompt = `Sos consultor senior de growth marketing especializado en hoteleria, parte de la agencia ColorADS. Analizas el canal de VENTA DIRECTA del hotel "${ctx.hotelName}" (sitio web: ${ctx.siteUrl || 'n/d'}) y entregas conclusiones de nivel consultoria: precisas, accionables y con criterio de growth hacking. Esto lo lee el dueno del hotel, asi que tiene que sonar experto y riguroso. REGLA DE ORO: no inventes datos ni cifras de mejora; usa SOLO los numeros que te doy y tu conocimiento de la industria. Nada de obviedades ni de relleno.
+  const prompt = `Sos consultor senior de growth marketing hotelero de la agencia ColorADS. Entregas conclusiones de nivel consultoria sobre el canal de VENTA DIRECTA del hotel: precisas, accionables y honestas. Las lee el dueno del hotel, asi que deben sonar expertas y dejar bien parado el trabajo de la agencia. REGLA DE ORO: no inventes datos ni cifras de mejora; usa SOLO los numeros del mes que te doy, tu base de conocimiento y criterio profesional.
 
-CONTEXTO DEL HOTEL (texto extraido de su sitio web):
-${ctx.siteText ? ctx.siteText : '(no se pudo leer el sitio; usa tu conocimiento del hotel y del mercado de El Poblado, Medellin)'}
+=== BASE DE CONOCIMIENTO DEL HOTEL Y SU ESTRATEGIA ===
+${ctx.knowledgeBase || '(sin base; usa criterio general de marketing hotelero y la premisa de captar extranjeros YA presentes en el pais, nunca campanas al exterior)'}
 
-DATOS REALES DE ${mesNombre} ${ctx.year}:
-- Facturacion atribuible (venta directa generada por el marketing gestionado): ${cop(ctx.attrRevenue)}
+=== DATOS REALES DE ${mesNombre} ${ctx.year} ===
+- Facturacion atribuible (venta directa generada por el marketing): ${cop(ctx.attrRevenue)}
 - Inversion total en marketing: ${cop(ctx.totalInvestment)}
-- ROAS: ${ctx.roas.toFixed(1)}x · coste publicitario: ${ctx.adCostPct.toFixed(1)}%
+- ROAS: ${ctx.roas.toFixed(1)}x · coste publicitario: ${ctx.adCostPct.toFixed(1)}% de la venta directa
 - Fee de exito (${ctx.successFeePct}%): ${cop(ctx.fee)}
 - Inversion por canal: Google ${cop(ctx.google)} (${ctx.clicks.toLocaleString()} clics, CPC ${cop(ctx.cpc)}), Meta ${cop(ctx.meta)} (${ctx.impressions.toLocaleString()} impresiones), Contenido ${cop(ctx.content)}, Honorarios ${cop(ctx.fees)}
 - Reservas: ${ctx.bookingCount} reservas por ${cop(ctx.bookingVolume)}, ticket promedio ${cop(ctx.avgTicket)}, estadia promedio ${ctx.avgNights.toFixed(1)} noches
@@ -137,19 +134,16 @@ DATOS REALES DE ${mesNombre} ${ctx.year}:
 - Top categorias de habitacion: ${ctx.topRoomTypes.slice(0, 5).map((r) => `${r.category_name} ${cop(r.revenue)}`).join(', ')}
 - Ritmo de venta de reservas (meses de estadia reservados este mes): ${ctx.stayDist.map((s) => `${s.label} ${cop(s.revenue)}${s.self ? ' (mismo mes)' : ''}`).join(', ')}
 
-BENCHMARKS DE MERCADO (referencia para evaluar el ROAS contra el mercado):
-- ROAS saludable de venta directa hotelera por paid media: ~8-15x. Menos de 5x es debil; mas de 15x es excelente y suele indicar margen para escalar inversion.
-- Las OTAs (Booking, Expedia) cobran ~15-25% de comision. Cada reserva movida de OTA a venta directa ahorra esa comision: ese es el verdadero valor del canal directo y el angulo central del growth hacking hotelero.
-- Vigila que el CPC no erosione el margen y que el presupuesto este concentrado donde mejor convierte.
-
-TU ENTREGA: EXACTAMENTE 4 items.
-- Al menos 3 deben ser PROPUESTAS ACCIONABLES (tone "action") de growth hacking hotelero, elegidas porque encajan con ESTOS numeros. Menu de ideas (elegi y adapta las que apliquen, no las uses todas): bajar dependencia de OTAs con tarifa o beneficio directo exclusivo; retargeting a visitantes de alta intencion que no reservaron; email/CRM a huespedes pasados; campanas segmentadas por ventana de reserva (lead time); concentrar presupuesto en los mercados de origen de mayor valor; upsell hacia las categorias de mayor ADR; optimizar el funnel de reserva del sitio; best-rate o price-match directo.
-- 1 item puede ser "good" (fortaleza clave del mes) o "watch" (riesgo a vigilar) para dar contexto.
-- En al menos un item evalua EXPLICITAMENTE el ROAS de ${ctx.roas.toFixed(1)}x contra el mercado (por encima/dentro/debajo del rango sano) y traducilo a una accion.
-- Cada item: concreto, especifico a ESTE hotel y atado a un numero real del mes. Sin genericos, sin promesas de resultados garantizados ni cifras de mejora inventadas. "title" = 3 a 6 palabras. "body" = 1 o 2 frases con el dato + la accion.
+=== REGLAS DE LA ENTREGA ===
+- EXACTAMENTE 4 items.
+- Al menos 3 son PROPUESTAS ACCIONABLES (tone "action") tomadas de las palancas de la base de conocimiento, elegidas porque encajan con ESTOS numeros y RESPETANDO la premisa de targeting (captar extranjeros ya en el pais; jamas proponer campanas costosas al exterior).
+- 1 item puede ser "good" (fortaleza clave del mes) o "watch" (riesgo a vigilar).
+- En al menos un item evalua el ROAS de ${ctx.roas.toFixed(1)}x usando el benchmark de comision OTA de la base de conocimiento (no rangos genericos) y traducilo a una accion.
+- Cada item atado a un numero real del mes. Nada generico, sin promesas garantizadas ni cifras inventadas.
+- LARGO (importante, el texto va en tarjetas): "title" 3 a 6 palabras. "body" CONCISO: 1 o 2 frases, MAXIMO ~45 palabras. No te excedas.
 - Tono: consultoria profesional, segura y honesta.
 
-Responde SOLO con JSON valido (sin markdown ni texto extra). Forma: un objeto con la clave "items" cuyo valor es un array de EXACTAMENTE 4 objetos, cada uno con las claves "tone" (good|watch|action), "title" (string) y "body" (string).`
+Responde SOLO con JSON valido (sin markdown ni texto extra): un objeto con la clave "items" cuyo valor es un array de EXACTAMENTE 4 objetos, cada uno con las claves "tone" (good|watch|action), "title" (string) y "body" (string).`
 
   try {
     const controller = new AbortController()
@@ -157,7 +151,7 @@ Responde SOLO con JSON valido (sin markdown ni texto extra). Forma: un objeto co
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] }),
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1200, messages: [{ role: 'user', content: prompt }] }),
       signal: controller.signal,
     })
     clearTimeout(timer)
@@ -170,7 +164,7 @@ Responde SOLO con JSON valido (sin markdown ni texto extra). Forma: un objeto co
       .filter((b: { type: string }) => b.type === 'text')
       .map((b: { text: string }) => b.text)
       .join('\n')
-    let jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim()
+    const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim()
     let parsed: unknown
     try {
       parsed = JSON.parse(jsonStr)
@@ -183,7 +177,7 @@ Responde SOLO con JSON valido (sin markdown ni texto extra). Forma: un objeto co
     const items: { tone?: string; title?: string; body?: string }[] = Array.isArray(parsed) ? parsed as [] : ((root.items as []) ?? [])
     const out: AiInsights = { positive: [], attention: [], strategic: [] }
     for (const it of items) {
-      const card: Card = { title: String(it.title ?? '').slice(0, 90), body: String(it.body ?? '').slice(0, 340) }
+      const card: Card = { title: String(it.title ?? '').slice(0, 120), body: String(it.body ?? '').slice(0, 600) }
       if (!card.title && !card.body) continue
       if (it.tone === 'good') out.positive.push(card)
       else if (it.tone === 'watch') out.attention.push(card)
@@ -222,10 +216,8 @@ export async function buildMonthReport(slug: string, year: number, month: number
 
   const attrSources = property.attributable_sources ?? []
   const propertyId  = property.cloudbeds_property_id ?? '212206'
-  // Sitio del hotel (por ahora solo h98). Se lee en paralelo, no agrega latencia.
-  const siteUrl = slug === 'h98' ? 'https://hashtag98.com.co/' : ''
 
-  const [insightsMetrics, arrivals, countryProduction, stayDist, siteText] = await Promise.all([
+  const [insightsMetrics, arrivals, countryProduction, stayDist] = await Promise.all([
     getInsightsBookingMetrics(apiKey, propertyId, year, month, attrSources),
     getReservations(apiKey, {
       checkInFrom: `${year}-${pad(month)}-01`,
@@ -234,7 +226,6 @@ export async function buildMonthReport(slug: string, year: number, month: number
     }),
     getProductionByCountry(apiKey, propertyId, year, month, attrSources),
     bookingStayDistribution(apiKey, propertyId, year, month, attrSources),
-    siteUrl ? fetchSiteText(siteUrl) : Promise.resolve(''),
   ])
 
   let guests = 0, nights = 0
@@ -292,7 +283,7 @@ export async function buildMonthReport(slug: string, year: number, month: number
 
     const totalInvestment = Number(billing.total_investment) || 0
     const r = await generateInsights({
-      hotelName: property.name, siteUrl, siteText, year, month,
+      hotelName: property.name, knowledgeBase: HOTEL_KB[slug] ?? '', year, month,
       attrRevenue, totalInvestment,
       roas: totalInvestment > 0 ? attrRevenue / totalInvestment : 0,
       adCostPct: attrRevenue > 0 ? (totalInvestment / attrRevenue) * 100 : 0,
