@@ -83,12 +83,12 @@ export function RevenueExplorer({ rows, attributable }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Chart 1: Facturación (negra) + línea hotel */}
+      {/* Chart 1: Facturación (negra, eje izq.) + línea hotel (eje der.) */}
       <div className="bg-white border border-gray-100 rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-[13px] font-medium text-gray-900">Facturación</h3>
-            <p className="text-[11px] text-gray-400 mt-0.5">Ingresos por estadía del mes — atribuible vs total hotel</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">Ingresos por estadía del mes — atribuible (eje izq.) vs total hotel (eje der.)</p>
           </div>
           <div className="flex items-center gap-4 text-[11px] text-gray-500">
             <span className="flex items-center gap-1.5">
@@ -105,12 +105,13 @@ export function RevenueExplorer({ rows, attributable }: Props) {
           <ComposedChart data={data} barCategoryGap="22%" margin={{ top: 18, right: 8, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
             <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-            <YAxis tickFormatter={(v) => formatCOP(v)} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={52} />
+            <YAxis yAxisId="left" tickFormatter={(v) => formatCOP(v)} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={52} />
+            <YAxis yAxisId="right" orientation="right" tickFormatter={(v) => formatCOP(v)} tick={{ fontSize: 10, fill: '#f59e0b' }} axisLine={false} tickLine={false} width={52} />
             <Tooltip content={<CustomTooltip />} />
-            <Bar dataKey="Facturación" fill="#1a1a1a" radius={[3, 3, 0, 0]}>
+            <Bar yAxisId="left" dataKey="Facturación" fill="#1a1a1a" radius={[3, 3, 0, 0]}>
               <LabelList dataKey="Facturación" content={barLabel} />
             </Bar>
-            <Line type="monotone" dataKey="Total hotel" stroke="#f59e0b" strokeWidth={2} dot={{ r: 2, fill: '#f59e0b' }} />
+            <Line yAxisId="right" type="monotone" dataKey="Total hotel" stroke="#f59e0b" strokeWidth={2} dot={{ r: 2, fill: '#f59e0b' }} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
