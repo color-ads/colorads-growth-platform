@@ -29,9 +29,15 @@ export async function GET(req: NextRequest) {
       .eq('slug', slug).single()
     if (!property) return NextResponse.json({ error: 'Property not found' }, { status: 404 })
 
-    const { data: billing } = await supabase.from('monthly_billing').select('*')
-      .eq('property_id', property.id).eq('year', year).eq('month', month).single()
-    if (!billing) return NextResponse.json({ error: `Sin datos para ${year}-${month}`, code: 'NO_BILLING_DATA' }, { status: 404 })
+    const { data: billingRow } = await supabase.from('monthly_billing').select('*')
+      .eq('property_id', property.id).eq('year', year).eq('month', month).maybeSingle()
+    // Si no hay inversión cargada para el mes, seguimos igual: la facturación sale de
+    // monthly_source_revenue (en el dashboard) y la inversión/ROAS quedan en 0.
+    const billing = billingRow ?? {
+      total_revenue: 0, google_investment: 0, meta_investment: 0, content_investment: 0,
+      fees: 0, total_investment: 0, ad_cost_pct: 0, roas: 0, clicks: 0, impressions: 0, cpc: 0,
+      booking_volume: null, booking_count: null,
+    }
 
     const attrSources = property.attributable_sources ?? []
     const propertyId  = property.cloudbeds_property_id ?? '212206'

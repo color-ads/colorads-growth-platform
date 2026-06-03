@@ -7,6 +7,9 @@ import { RevenueExplorer, type SourceRow } from '@/components/dashboard/RevenueE
 import { DemographicProfile } from '@/components/dashboard/DemographicProfile'
 import { InsightsPanel, ChannelBreakdown } from '@/components/dashboard/InsightsPanel'
 import type { MonthlyReport, Property } from '@/types'
+import Link from 'next/link'
+
+const MONTHS_ES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 
 // ─── Fetch & Map ──────────────────────────────────────────────────────────────
 
@@ -188,12 +191,29 @@ function facturacionForMonth(
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default async function DashboardPage() {
-  const currentMonth = 4
-  const currentYear  = 2026
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ m?: string; y?: string }>
+}) {
+  const sp = await searchParams
+  const now = new Date()
+  const nowY = now.getFullYear()
+  const nowM = now.getMonth() + 1
+
+  // Mes a analizar (de la URL: ?y=YYYY&m=MM). Default: abril 2026.
+  let selYear  = parseInt(sp.y ?? '') || 2026
+  let selMonth = parseInt(sp.m ?? '') || 4
+  if (selMonth < 1 || selMonth > 12) selMonth = 4
+  // No permitir un mes futuro: si llega, se acota al mes en curso.
+  if (selYear * 12 + selMonth > nowY * 12 + nowM) { selYear = nowY; selMonth = nowM }
+
+  const periodLabel = new Date(selYear, selMonth - 1)
+    .toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })
+    .replace(/^\w/, (c) => c.toUpperCase())
 
   const [currentReport, historical, sourceData] = await Promise.all([
-    getCurrentMonthReport(currentYear, currentMonth),
+    getCurrentMonthReport(selYear, selMonth),
     getHistoricalReports(),
     getSourceData(),
   ])
@@ -212,7 +232,7 @@ export default async function DashboardPage() {
       : 0
   }
   if (currentReport) {
-    const f = facturacionForMonth(sourceData.rows, sourceData.attributable, currentYear, currentMonth)
+    const f = facturacionForMonth(sourceData.rows, sourceData.attributable, selYear, selMonth)
     currentReport.attributable_revenue = f.attributable_revenue
     currentReport.total_hotel_revenue  = f.total_hotel_revenue
     currentReport.roas = (currentReport.total_investment || 0) > 0
@@ -223,7 +243,9 @@ export default async function DashboardPage() {
       : 0
   }
 
-  const prevReport = historical[historical.length - 2] ?? null
+  // Mes anterior al seleccionado (para los deltas del KPIStrip)
+  const prevIdx = selYear * 12 + (selMonth - 1) - 1
+  const prevReport = historical.find((r) => r.year! * 12 + (r.month! - 1) === prevIdx) ?? null
 
   const property: Property = {
     id:                  'h98',
@@ -255,24 +277,28 @@ export default async function DashboardPage() {
                 <span style={{ color: property.primary_color }}>H98</span>
               </h1>
               <p className="text-[11px] text-gray-400">
-                Abril 2026 · El Poblado, Medellín
+                {periodLabel} · El Poblado, Medellín
               </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-              {[{m:1,l:'ene'},{m:2,l:'feb'},{m:3,l:'mar'},{m:4,l:'abr'}].map(({m,l}) => (
-                <div
-                  key={m}
-                  className={`px-3 py-1 rounded-md text-[12px] cursor-pointer transition-all ${
-                    m === currentMonth
-                      ? 'bg-white text-gray-900 font-medium shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  {l}
-                </div>
-              ))}
+              {Array.from({ length: nowM }, (_, i) => i + 1).map((m) => {
+                const active = selYear === nowY && selMonth === m
+                return (
+                  <Link
+                    key={m}
+                    href={`/dashboard?y=${nowY}&m=${m}`}
+                    className={`px-3 py-1 rounded-md text-[12px] transition-all ${
+                      active
+                        ? 'bg-white text-gray-900 font-medium shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {MONTHS_ES[m - 1]}
+                  </Link>
+                )
+              })}
             </div>
           </div>
         </header>
