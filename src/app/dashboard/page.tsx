@@ -11,6 +11,7 @@ import { MonthSelector } from '@/components/dashboard/MonthSelector'
 import { RefreshButton } from '@/components/dashboard/RefreshButton'
 import { BookingPaceChart, type StayBucket } from '@/components/dashboard/BookingPaceChart'
 import { buildMonthReport } from '@/lib/api/month-report'
+import { roasFrom, adCostPctFrom } from '@/lib/metrics'
 
 // ─── Fetch & Map ──────────────────────────────────────────────────────────────
 
@@ -257,23 +258,15 @@ export default async function DashboardPage({
     const f = facturacionForMonth(sourceData.rows, sourceData.attributable, r.year!, r.month!)
     r.attributable_revenue = f.attributable_revenue
     r.total_hotel_revenue  = f.total_hotel_revenue
-    r.roas = (r.total_investment || 0) > 0
-      ? Math.round((f.attributable_revenue / (r.total_investment as number)) * 100) / 100
-      : 0
-    r.ad_cost_pct = f.attributable_revenue > 0
-      ? Math.round(((r.total_investment || 0) / f.attributable_revenue) * 10000) / 100
-      : 0
+    r.roas = roasFrom(f.attributable_revenue, r.total_investment || 0)
+    r.ad_cost_pct = adCostPctFrom(f.attributable_revenue, r.total_investment || 0)
   }
   if (currentReport) {
     const f = facturacionForMonth(sourceData.rows, sourceData.attributable, selYear, selMonth)
     currentReport.attributable_revenue = f.attributable_revenue
     currentReport.total_hotel_revenue  = f.total_hotel_revenue
-    currentReport.roas = (currentReport.total_investment || 0) > 0
-      ? Math.round((f.attributable_revenue / (currentReport.total_investment as number)) * 100) / 100
-      : 0
-    currentReport.ad_cost_pct = f.attributable_revenue > 0
-      ? Math.round(((currentReport.total_investment || 0) / f.attributable_revenue) * 10000) / 100
-      : 0
+    currentReport.roas = roasFrom(f.attributable_revenue, currentReport.total_investment || 0)
+    currentReport.ad_cost_pct = adCostPctFrom(f.attributable_revenue, currentReport.total_investment || 0)
   }
 
   // Mes anterior al seleccionado (para los deltas del KPIStrip)

@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getReservations } from '@/lib/api/cloudbeds'
 import { getInsightsBookingMetrics, getProductionByCountry } from '@/lib/api/insights'
 import type { GeoBreakdown, RoomCategoryBreakdown } from '@/types'
+import { roasFrom, adCostPctFrom } from '@/lib/metrics'
 
 const DI = 'https://api.cloudbeds.com/datainsights/v1.1'
 const MES_ABBR = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
@@ -265,8 +266,8 @@ export async function buildMonthReport(slug: string, year: number, month: number
     period: { year, month },
     metrics: {
       guests, nights,
-      bookingVolume:       billing.booking_volume ?? insightsMetrics.bookingVolume,
-      bookingCount:        billing.booking_count  ?? insightsMetrics.bookingCount,
+      bookingVolume:       Number(billing.booking_volume) || insightsMetrics.bookingVolume,
+      bookingCount:        Number(billing.booking_count) || insightsMetrics.bookingCount,
       avgTicket:           insightsMetrics.avgTicket,
       avgNightsPerBooking: insightsMetrics.avgNightsPerBooking,
       reservationStatus:   insightsMetrics.reservationStatus,
@@ -319,8 +320,8 @@ export async function buildMonthReport(slug: string, year: number, month: number
         hotelName: property.name, knowledgeBase: HOTEL_KB[slug] ?? '',
         priorProposals: formatPriorProposals(prevAi),
         year, month, attrRevenue, totalInvestment,
-        roas: totalInvestment > 0 ? attrRevenue / totalInvestment : 0,
-        adCostPct: attrRevenue > 0 ? (totalInvestment / attrRevenue) * 100 : 0,
+        roas: roasFrom(attrRevenue, totalInvestment),
+        adCostPct: adCostPctFrom(attrRevenue, totalInvestment),
         fee: Math.round((attrRevenue * (Number(property.success_fee_pct) || 0)) / 100),
         successFeePct: Number(property.success_fee_pct) || 0,
         google: Number(billing.google_investment) || 0, meta: Number(billing.meta_investment) || 0,
