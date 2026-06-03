@@ -35,12 +35,14 @@ async function getCurrentMonthReport(year: number, month: number): Promise<{ rep
 
     let m = cacheRow?.payload?.metrics
     let dist = cacheRow?.payload?.bookingStayDistribution
+    let ai = cacheRow?.payload?.aiInsights ?? null
     let refreshedAt: string = cacheRow?.refreshed_at ?? new Date().toISOString()
     if (!m || dist === undefined) {
-      const built = await buildMonthReport('h98', year, month)
+      const built = await buildMonthReport('h98', year, month, { withAi: false })
       if (!built) return null
       m = built.metrics
       dist = built.bookingStayDistribution ?? []
+      ai = built.aiInsights ?? null
       refreshedAt = new Date().toISOString()
     }
 
@@ -107,7 +109,7 @@ async function getCurrentMonthReport(year: number, month: number): Promise<{ rep
       ],
       campaign_breakdown:  [],
       source_breakdown:    [],
-      ai_insights:         null,
+      ai_insights:         ai,
       milestones:          [],
       status:              'published',
       published_at:        new Date().toISOString(),

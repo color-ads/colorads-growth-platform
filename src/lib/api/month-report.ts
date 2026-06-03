@@ -85,7 +85,87 @@ async function bookingStayDistribution(
   return head
 }
 
-export async function buildMonthReport(slug: string, year: number, month: number) {
+// ─── Conclusiones / propuestas IA ───────────────────────────────────────────────
+type Card = { title: string; body: string }
+type AiInsights = { positive: Card[]; attention: Card[]; strategic: Card[] }
+
+// Le manda a Claude los numeros reales del mes y pide 4 conclusiones/propuestas en JSON.
+// Devuelve null ante cualquier problema (sin key, API caida, JSON invalido) -> placeholder.
+async function generateInsights(ctx: {
+  hotelName: string; year: number; month: number
+  attrRevenue: number; totalInvestment: number; roas: number; adCostPct: number; fee: number; successFeePct: number
+  google: number; meta: number; content: number; fees: number; clicks: number; cpc: number; impressions: number
+  bookingVolume: number; bookingCount: number; avgTicket: number; avgNights: number
+  reservationStatus: Record<string, number>; leadTime: Record<string, number>
+  topCountries: { country: string; revenue: number; pct: number }[]
+  topRoomTypes: { category_name: string; revenue: number; pct: number }[]
+  stayDist: { label: string; revenue: number; self: boolean }[]
+}): Promise<AiInsights | null> {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) return null
+  const cop = (n: number) => '$' + (Math.round(n) / 1e6).toFixed(1) + 'M'
+  const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+  const mesNombre = meses[ctx.month - 1] ?? String(ctx.month)
+
+  const prompt = `Sos analista de growth y marketing del canal de VENTA DIRECTA de un hotel (${ctx.hotelName}). Te paso los datos REALES de ${mesNombre} ${ctx.year}. Genera EXACTAMENTE 4 conclusiones/propuestas cortas, concretas y accionables, en espanol, basadas SOLO en estos numeros (no inventes datos ni metricas que no esten aca).
+
+Datos del mes:
+- Facturacion atribuible (venta directa generada por el marketing gestionado): ${cop(ctx.attrRevenue)}
+- Inversion total en marketing: ${cop(ctx.totalInvestment)}
+- ROAS: ${ctx.roas.toFixed(1)}x · porcentaje de coste publicitario: ${ctx.adCostPct.toFixed(1)}%
+- Fee de exito (${ctx.successFeePct}%): ${cop(ctx.fee)}
+- Inversion por canal: Google ${cop(ctx.google)} (${ctx.clicks.toLocaleString()} clics, CPC ${cop(ctx.cpc)}), Meta ${cop(ctx.meta)} (${ctx.impressions.toLocaleString()} impresiones), Contenido ${cop(ctx.content)}, Honorarios ${cop(ctx.fees)}
+- Reservas: ${ctx.bookingCount} reservas por ${cop(ctx.bookingVolume)}, ticket promedio ${cop(ctx.avgTicket)}, estadia promedio ${ctx.avgNights.toFixed(1)} noches
+- Estado de reservas (%): ${Object.entries(ctx.reservationStatus).map(([k, v]) => `${k} ${Number(v).toFixed(0)}%`).join(', ')}
+- Antelacion de reserva (%): ${Object.entries(ctx.leadTime).map(([k, v]) => `${k} ${Number(v).toFixed(0)}%`).join(', ')}
+- Top paises por venta: ${ctx.topCountries.slice(0, 5).map((c) => `${c.country} ${cop(c.revenue)} (${c.pct.toFixed(0)}%)`).join(', ')}
+- Top categorias de habitacion: ${ctx.topRoomTypes.slice(0, 5).map((r) => `${r.category_name} ${cop(r.revenue)}`).join(', ')}
+- Ritmo de venta de reservas (para que meses de estadia se reservo este mes): ${ctx.stayDist.map((s) => `${s.label} ${cop(s.revenue)}${s.self ? ' (mismo mes)' : ''}`).join(', ')}
+
+Para cada uno de los 4 items elegi un "tone":
+- "good": algo que esta yendo bien (un logro o fortaleza).
+- "watch": algo a vigilar o un riesgo.
+- "action": una propuesta concreta a desarrollar el proximo mes.
+Idealmente ~2 de good/watch y ~2 de action. "title" = titular de 3 a 6 palabras. "body" = 1 o 2 frases concretas, citando el numero relevante cuando ayude. Hablale al dueno del hotel: claro, util y sin jerga tecnica.
+
+Responde SOLO con JSON valido (sin markdown ni texto extra). Forma: un objeto con la clave "items" cuyo valor es un array de EXACTAMENTE 4 objetos, cada uno con las claves "tone" (good|watch|action), "title" (string) y "body" (string).`
+
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 30000)
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1200, messages: [{ role: 'user', content: prompt }] }),
+      signal: controller.signal,
+    })
+    clearTimeout(timer)
+    if (!res.ok) { console.error('[generateInsights] api', res.status, (await res.text()).slice(0, 200)); return null }
+    const data = await res.json()
+    const text: string = (data.content ?? [])
+      .filter((b: { type: string }) => b.type === 'text')
+      .map((b: { text: string }) => b.text)
+      .join('\n')
+    const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim()
+    const parsed = JSON.parse(jsonStr)
+    const items: { tone?: string; title?: string; body?: string }[] = Array.isArray(parsed) ? parsed : (parsed.items ?? [])
+    const out: AiInsights = { positive: [], attention: [], strategic: [] }
+    for (const it of items) {
+      const card: Card = { title: String(it.title ?? '').slice(0, 90), body: String(it.body ?? '').slice(0, 320) }
+      if (!card.title && !card.body) continue
+      if (it.tone === 'good') out.positive.push(card)
+      else if (it.tone === 'watch') out.attention.push(card)
+      else out.strategic.push(card)
+    }
+    if (out.positive.length + out.attention.length + out.strategic.length === 0) return null
+    return out
+  } catch (e) {
+    console.error('[generateInsights]', (e as Error).message)
+    return null
+  }
+}
+
+export async function buildMonthReport(slug: string, year: number, month: number, opts: { withAi?: boolean } = {}) {
   const apiKey = process.env.CLOUDBEDS_API_KEY
   if (!apiKey) throw new Error('CLOUDBEDS_API_KEY not configured')
 
@@ -164,11 +244,52 @@ export async function buildMonthReport(slug: string, year: number, month: number
     _meta: { arrivals: arrivals.length, bookingCount: insightsMetrics.bookingCount, geoCountries: countryProduction.length, geoTotal: Math.round(totalCountryRevenue), dataSource: 'insights+pms+supabase' },
   }
 
+  // ── Conclusiones/propuestas IA (4 items), cacheadas. Se generan en refresh/cron (withAi),
+  //    no en cada carga. Si no hay key o la API falla, queda null y el tablero muestra placeholder.
+  const withAi = opts.withAi !== false
+  let aiInsights: AiInsights | null = null
+  if (withAi) {
+    // Facturacion atribuible real (monthly_source_revenue) para alimentar el analisis.
+    let attrRevenue = 0
+    const attrSet = new Set(attrSources)
+    const { data: srcRows } = await supabase.from('monthly_source_revenue')
+      .select('source,stay_revenue').eq('property_id', property.id).eq('year', year).eq('month', month)
+    for (const r of (srcRows ?? [])) if (attrSet.has(r.source)) attrRevenue += Number(r.stay_revenue) || 0
+    attrRevenue = Math.round(attrRevenue)
+
+    const totalInvestment = Number(billing.total_investment) || 0
+    aiInsights = await generateInsights({
+      hotelName: property.name, year, month,
+      attrRevenue, totalInvestment,
+      roas: totalInvestment > 0 ? attrRevenue / totalInvestment : 0,
+      adCostPct: attrRevenue > 0 ? (totalInvestment / attrRevenue) * 100 : 0,
+      fee: Math.round((attrRevenue * (Number(property.success_fee_pct) || 0)) / 100),
+      successFeePct: Number(property.success_fee_pct) || 0,
+      google: Number(billing.google_investment) || 0, meta: Number(billing.meta_investment) || 0,
+      content: Number(billing.content_investment) || 0, fees: Number(billing.fees) || 0,
+      clicks: Number(billing.clicks) || 0, cpc: Number(billing.cpc) || 0, impressions: Number(billing.impressions) || 0,
+      bookingVolume: payload.metrics.bookingVolume, bookingCount: payload.metrics.bookingCount,
+      avgTicket: insightsMetrics.avgTicket, avgNights: insightsMetrics.avgNightsPerBooking,
+      reservationStatus: insightsMetrics.reservationStatus as unknown as Record<string, number>,
+      leadTime: insightsMetrics.leadTime as unknown as Record<string, number>,
+      topCountries: geoBreakdown.map((g) => ({ country: g.country, revenue: g.revenue, pct: g.pct })),
+      topRoomTypes: roomBreakdown.map((r) => ({ category_name: r.category_name, revenue: r.revenue, pct: r.pct })),
+      stayDist: stayDist.map((s) => ({ label: s.label, revenue: s.revenue, self: s.self })),
+    })
+  } else {
+    // Self-heal de carga: no llama a la IA, preserva las conclusiones ya cacheadas.
+    const { data: existing } = await supabase.from('monthly_dashboard_cache')
+      .select('payload').eq('property_id', property.id).eq('year', year).eq('month', month).maybeSingle()
+    aiInsights = ((existing?.payload as { aiInsights?: AiInsights } | null)?.aiInsights) ?? null
+  }
+
+  const fullPayload = { ...payload, aiInsights }
+
   const { error } = await supabase.from('monthly_dashboard_cache').upsert(
-    { property_id: property.id, year, month, payload, refreshed_at: new Date().toISOString() },
+    { property_id: property.id, year, month, payload: fullPayload, refreshed_at: new Date().toISOString() },
     { onConflict: 'property_id,year,month' },
   )
   if (error) console.error('[buildMonthReport] cache upsert:', error.message)
 
-  return payload
+  return fullPayload
 }
