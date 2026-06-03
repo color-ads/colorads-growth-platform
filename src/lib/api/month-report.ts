@@ -24,9 +24,6 @@ async function di(apiKey: string, pid: string, reportId: number, body: object) {
   return res.json()
 }
 
-// Distribucion de la VENTA de reservas hechas en (year, month) segun su mes de estadia.
-// Solo venta directa atribuible (igual que el resto de "venta de reservas" del tablero).
-// Report 17 filtra por fecha de reserva; cada registro trae checkin_date + grand_total.
 async function bookingStayDistribution(
   apiKey: string, pid: string, year: number, month: number, attrSources: string[],
 ) {
@@ -49,13 +46,13 @@ async function bookingStayDistribution(
     const status = String(records.reservation_status?.[i] ?? '').toLowerCase()
     if (status.includes('cancel')) continue
     const src = String(records.reservation_source?.[i] ?? '')
-    if (attr.size && !attr.has(src)) continue           // solo venta directa atribuible
+    if (attr.size && !attr.has(src)) continue
     const checkin = String(records.checkin_date?.[i] ?? '')
     if (!checkin || checkin === '-') continue
     const dt = new Date(checkin)
     if (isNaN(dt.getTime())) continue
     const key = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}`
-    if (key < selfKey) continue                          // solo mismo mes en adelante
+    if (key < selfKey) continue
     if (!byMonth[key]) byMonth[key] = { revenue: 0, bookings: 0 }
     byMonth[key].revenue += toNum(records.grand_total_amount?.[i])
     byMonth[key].bookings += 1
@@ -71,7 +68,6 @@ async function bookingStayDistribution(
       self: k === selfKey,
     }
   })
-  // Cap a 7 barras; el resto se agrupa en "Posterior" para no ensuciar el grafico.
   const CAP = 7
   if (out.length <= CAP) return out
   const head = out.slice(0, CAP - 1)
@@ -89,8 +85,7 @@ async function bookingStayDistribution(
 type Card = { title: string; body: string }
 type AiInsights = { positive: Card[]; attention: Card[]; strategic: Card[] }
 
-// Le manda a Claude los numeros reales del mes y pide 4 conclusiones/propuestas en JSON.
-// Devuelve null ante cualquier problema (sin key, API caida, JSON invalido) -> placeholder.
+// Devuelve { insights, debug }. "debug" explica el resultado (ver aiDebug en el payload).
 async function generateInsights(ctx: {
   hotelName: string; year: number; month: number
   attrRevenue: number; totalInvestment: number; roas: number; adCostPct: number; fee: number; successFeePct: number
@@ -100,9 +95,9 @@ async function generateInsights(ctx: {
   topCountries: { country: string; revenue: number; pct: number }[]
   topRoomTypes: { category_name: string; revenue: number; pct: number }[]
   stayDist: { label: string; revenue: number; self: boolean }[]
-}): Promise<AiInsights | null> {
+}): Promise<{ insights: AiInsights | null; debug: string }> {
   const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) return null
+  if (!apiKey) return { insights: null, debug: 'NO_API_KEY (process.env.ANTHROPIC_API_KEY vacio en el deploy)' }
   const cop = (n: number) => '$' + (Math.round(n) / 1e6).toFixed(1) + 'M'
   const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
   const mesNombre = meses[ctx.month - 1] ?? String(ctx.month)
@@ -132,7 +127,7 @@ Responde SOLO con JSON valido (sin markdown ni texto extra). Forma: un objeto co
 
   try {
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 30000)
+    const timer = setTimeout(() => controller.abort(), 25000)
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -140,15 +135,21 @@ Responde SOLO con JSON valido (sin markdown ni texto extra). Forma: un objeto co
       signal: controller.signal,
     })
     clearTimeout(timer)
-    if (!res.ok) { console.error('[generateInsights] api', res.status, (await res.text()).slice(0, 200)); return null }
+    if (!res.ok) {
+      const body = (await res.text()).slice(0, 150)
+      console.error('[generateInsights] api', res.status, body)
+      return { insights: null, debug: `API_${res.status}: ${body}` }
+    }
     const data = await res.json()
     const text: string = (data.content ?? [])
       .filter((b: { type: string }) => b.type === 'text')
       .map((b: { text: string }) => b.text)
       .join('\n')
     const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim()
-    const parsed = JSON.parse(jsonStr)
-    const items: { tone?: string; title?: string; body?: string }[] = Array.isArray(parsed) ? parsed : (parsed.items ?? [])
+    let parsed: unknown
+    try { parsed = JSON.parse(jsonStr) } catch { return { insights: null, debug: `PARSE_FAIL raw: ${text.slice(0, 150)}` } }
+    const root = parsed as { items?: unknown }
+    const items: { tone?: string; title?: string; body?: string }[] = Array.isArray(parsed) ? parsed as [] : ((root.items as []) ?? [])
     const out: AiInsights = { positive: [], attention: [], strategic: [] }
     for (const it of items) {
       const card: Card = { title: String(it.title ?? '').slice(0, 90), body: String(it.body ?? '').slice(0, 320) }
@@ -157,11 +158,11 @@ Responde SOLO con JSON valido (sin markdown ni texto extra). Forma: un objeto co
       else if (it.tone === 'watch') out.attention.push(card)
       else out.strategic.push(card)
     }
-    if (out.positive.length + out.attention.length + out.strategic.length === 0) return null
-    return out
+    const total = out.positive.length + out.attention.length + out.strategic.length
+    if (total === 0) return { insights: null, debug: `EMPTY (0 items) raw: ${text.slice(0, 150)}` }
+    return { insights: out, debug: `OK ${total} items` }
   } catch (e) {
-    console.error('[generateInsights]', (e as Error).message)
-    return null
+    return { insights: null, debug: `EXCEPTION: ${(e as Error).message}` }
   }
 }
 
@@ -244,12 +245,11 @@ export async function buildMonthReport(slug: string, year: number, month: number
     _meta: { arrivals: arrivals.length, bookingCount: insightsMetrics.bookingCount, geoCountries: countryProduction.length, geoTotal: Math.round(totalCountryRevenue), dataSource: 'insights+pms+supabase' },
   }
 
-  // ── Conclusiones/propuestas IA (4 items), cacheadas. Se generan en refresh/cron (withAi),
-  //    no en cada carga. Si no hay key o la API falla, queda null y el tablero muestra placeholder.
+  // ── Conclusiones/propuestas IA (4 items) + aiDebug (motivo). Solo en withAi (refresh/cron).
   const withAi = opts.withAi !== false
   let aiInsights: AiInsights | null = null
+  let aiDebug = 'skipped (withAi=false)'
   if (withAi) {
-    // Facturacion atribuible real (monthly_source_revenue) para alimentar el analisis.
     let attrRevenue = 0
     const attrSet = new Set(attrSources)
     const { data: srcRows } = await supabase.from('monthly_source_revenue')
@@ -258,7 +258,7 @@ export async function buildMonthReport(slug: string, year: number, month: number
     attrRevenue = Math.round(attrRevenue)
 
     const totalInvestment = Number(billing.total_investment) || 0
-    aiInsights = await generateInsights({
+    const r = await generateInsights({
       hotelName: property.name, year, month,
       attrRevenue, totalInvestment,
       roas: totalInvestment > 0 ? attrRevenue / totalInvestment : 0,
@@ -276,14 +276,16 @@ export async function buildMonthReport(slug: string, year: number, month: number
       topRoomTypes: roomBreakdown.map((r) => ({ category_name: r.category_name, revenue: r.revenue, pct: r.pct })),
       stayDist: stayDist.map((s) => ({ label: s.label, revenue: s.revenue, self: s.self })),
     })
+    aiInsights = r.insights
+    aiDebug = r.debug
   } else {
-    // Self-heal de carga: no llama a la IA, preserva las conclusiones ya cacheadas.
     const { data: existing } = await supabase.from('monthly_dashboard_cache')
       .select('payload').eq('property_id', property.id).eq('year', year).eq('month', month).maybeSingle()
     aiInsights = ((existing?.payload as { aiInsights?: AiInsights } | null)?.aiInsights) ?? null
+    aiDebug = 'preserved (withAi=false)'
   }
 
-  const fullPayload = { ...payload, aiInsights }
+  const fullPayload = { ...payload, aiInsights, aiDebug }
 
   const { error } = await supabase.from('monthly_dashboard_cache').upsert(
     { property_id: property.id, year, month, payload: fullPayload, refreshed_at: new Date().toISOString() },
