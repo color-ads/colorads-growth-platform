@@ -348,15 +348,9 @@ export default async function DashboardPage({
               />
               <RoiStrip report={currentReport} property={property} />
               <BookingPaceChart distribution={stayDistribution} monthLabel={periodLabel} />
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                <div className="xl:col-span-2 space-y-6">
-                  <DemographicProfile report={currentReport} historicalReports={historical} property={property} />
-                  <ChannelBreakdown report={currentReport} property={property} />
-                </div>
-                <div className="space-y-6">
-                  <InsightsPanel report={currentReport} property={property} />
-                </div>
-              </div>
+              <DemographicProfile report={currentReport} historicalReports={historical} property={property} />
+              <ChannelBreakdown report={currentReport} property={property} />
+              <InsightsPanel report={currentReport} property={property} />
             </>
           )}
         </main>
