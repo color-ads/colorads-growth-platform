@@ -201,10 +201,10 @@ export default async function DashboardPage({
   const nowY = now.getFullYear()
   const nowM = now.getMonth() + 1
 
-  // Mes a analizar (de la URL: ?y=YYYY&m=MM). Default: abril 2026.
-  let selYear  = parseInt(sp.y ?? '') || 2026
-  let selMonth = parseInt(sp.m ?? '') || 4
-  if (selMonth < 1 || selMonth > 12) selMonth = 4
+  // Mes a analizar (de la URL: ?y=YYYY&m=MM). Default: el último mes (mes en curso).
+  let selYear  = parseInt(sp.y ?? '') || nowY
+  let selMonth = parseInt(sp.m ?? '') || nowM
+  if (selMonth < 1 || selMonth > 12) selMonth = nowM
   // No permitir un mes futuro: si llega, se acota al mes en curso.
   if (selYear * 12 + selMonth > nowY * 12 + nowM) { selYear = nowY; selMonth = nowM }
 
