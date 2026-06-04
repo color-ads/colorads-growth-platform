@@ -367,7 +367,7 @@ export default async function DashboardPage({
               <BookingPaceChart distribution={stayDistribution} monthLabel={periodLabel} />
               <DemographicProfile report={currentReport} historicalReports={historical} property={property} />
               <ChannelBreakdown report={currentReport} property={property} />
-              <InsightsPanel report={currentReport} property={property} tracking={proposalTracking} />
+              <InsightsPanel report={currentReport} property={property} tracking={proposalTracking} editable={selYear === nowY && selMonth === nowM} />
             </>
           )}
         </main>

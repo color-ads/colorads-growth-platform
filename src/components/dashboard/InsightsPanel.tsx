@@ -10,6 +10,7 @@ interface InsightsPanelProps {
   report: Partial<MonthlyReport>
   property: Property
   tracking?: Record<number, TrackInfo>
+  editable?: boolean
 }
 
 const TONE = {
@@ -98,7 +99,7 @@ function ActionTracker({ year, month, idx, title, initial }: {
 }
 
 // Conclusiones (full-width, abajo). Las propuestas (action) llevan controles de ejecucion.
-export function InsightsPanel({ report, tracking }: InsightsPanelProps) {
+export function InsightsPanel({ report, tracking, editable }: InsightsPanelProps) {
   const insights = report.ai_insights
   const trk = tracking || {}
   const cards: { title: string; body: string; tone: keyof typeof TONE; actionIdx?: number }[] = []
@@ -126,7 +127,7 @@ export function InsightsPanel({ report, tracking }: InsightsPanelProps) {
             <div key={i} className={`rounded-lg p-3 border-l-[3px] ${TONE[c.tone].box}`}>
               <div className={`text-[12px] font-medium mb-1 ${TONE[c.tone].title}`}>{c.title}</div>
               <div className={`text-[11px] leading-relaxed ${TONE[c.tone].body}`}>{c.body}</div>
-              {c.actionIdx !== undefined && (
+              {editable && c.actionIdx !== undefined && (
                 <ActionTracker
                   year={year}
                   month={month}
