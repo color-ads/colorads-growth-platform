@@ -114,7 +114,7 @@ function formatScheduledExperiments(rows: { title?: string | null; will_execute?
 }
 
 async function generateInsights(ctx: {
-  hotelName: string; knowledgeBase: string; scheduledExperiments: string; year: number; month: number
+  hotelName: string; knowledgeBase: string; competitionKb: string; scheduledExperiments: string; year: number; month: number
   attrRevenue: number; totalInvestment: number; roas: number; adCostPct: number; fee: number; successFeePct: number
   google: number; meta: number; content: number; fees: number; clicks: number; cpc: number; impressions: number
   bookingVolume: number; bookingCount: number; avgTicket: number; avgNights: number
@@ -135,6 +135,9 @@ El analisis es un CICLO MENSUAL de experimentacion: cada mes planteamos hipotesi
 
 === BASE DE CONOCIMIENTO DEL HOTEL Y SU ESTRATEGIA ===
 ${ctx.knowledgeBase || '(sin base; usa criterio general de marketing hotelero y la premisa de captar extranjeros YA presentes en el pais, nunca campanas al exterior)'}
+
+=== COMPETENCIA Y REFERENCIAS (investigacion web) ===
+${ctx.competitionKb || '(sin investigacion de competencia todavia)'}
 
 === EXPERIMENTOS PROGRAMADOS PARA ESTE MES (lo que el equipo marco para ejecutar) ===
 ${ctx.scheduledExperiments || '(no hay experimentos marcados para ejecutarse este mes)'}
@@ -158,6 +161,7 @@ ${ctx.scheduledExperiments || '(no hay experimentos marcados para ejecutarse est
 - Los items restantes (al menos 2) son PROPUESTAS/EXPERIMENTOS para probar el PROXIMO mes ("action"), de las palancas de la base de conocimiento, atados a estos numeros y respetando la premisa de targeting (extranjeros ya en el pais; jamas campanas al exterior). Planteales como hipotesis: que vamos a probar y que esperamos que mueva.
 - SI NO hay experimentos ejecutados este mes: los 4 son propuestas/experimentos para el proximo mes (3-4 "action", como mucho 1 "good"/"watch" de contexto).
 - En al menos un item evalua el ROAS de ${ctx.roas.toFixed(1)}x usando el benchmark de comision OTA de la base de conocimiento (no rangos genericos) y traducilo a una accion.
+- Si la seccion de competencia muestra practicas que funcionan en hoteles similares de El Poblado, podes proponer experimentos inspirados en ellas (respetando la premisa de targeting y aclarando que la idea viene de la competencia).
 - Cada item atado a un numero real del mes. Nada generico, sin promesas garantizadas ni cifras inventadas.
 - LARGO (el texto va en tarjetas): "title" 3 a 6 palabras. "body" CONCISO: 1 o 2 frases, MAXIMO ~45 palabras.
 - Tono: consultoria profesional, segura y honesta.
@@ -312,6 +316,9 @@ export async function buildMonthReport(slug: string, year: number, month: number
         .eq('property_id', property.id).eq('period', periodKey)
       const scheduledExperiments = formatScheduledExperiments(trkRows ?? [])
 
+      const { data: ckRow } = await supabase.from('properties').select('ai_competition_kb').eq('id', property.id).maybeSingle()
+      const competitionKb = (ckRow?.ai_competition_kb as string | null) ?? ''
+
       let attrRevenue = 0
       const attrSet = new Set(attrSources)
       const { data: srcRows } = await supabase.from('monthly_source_revenue')
@@ -321,7 +328,7 @@ export async function buildMonthReport(slug: string, year: number, month: number
 
       const totalInvestment = Number(billing.total_investment) || 0
       const r = await generateInsights({
-        hotelName: property.name, knowledgeBase: HOTEL_KB[slug] ?? '',
+        hotelName: property.name, knowledgeBase: HOTEL_KB[slug] ?? '', competitionKb,
         scheduledExperiments,
         year, month, attrRevenue, totalInvestment,
         roas: roasFrom(attrRevenue, totalInvestment),
