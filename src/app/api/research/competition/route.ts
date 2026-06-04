@@ -83,7 +83,7 @@ HOTEL CLIENTE: ${prop.name}. Sitio oficial: ${OUR_URL}. Esta en El Poblado, Mede
 
 PASO 1 - Entende que YA hace el hotel cliente. Visita su sitio ${OUR_URL} y mira su presencia publica (Instagram, ficha de Google). Lista en "ourHotel.alreadyDoing" lo que YA tiene (motor de reservas, WhatsApp, codigos/promos, idiomas del sitio, packs, blog, redes). CRITICO: si el hotel ya lo hace, NO puede ser un hallazgo.
 
-PASO 2 - Investiga a fondo a los competidores directos: ${competitors.join(', ')}. Haz multiples busquedas especificas. Tenes tiempo para un estudio profundo: SE EXHAUSTIVO, haz varias busquedas (idealmente 8 o mas) cubriendo las distintas lentes y a cada competidor antes de concluir; no te detengas temprano ni te conformes con la primera pagina de resultados. Cubri estas lentes y profundiza donde haya senal real:
+PASO 2 - Investiga a fondo a los competidores directos: ${competitors.join(', ')}. Haz multiples busquedas especificas. Tenes tiempo para un estudio profundo: SE EXHAUSTIVO, haz varias busquedas cubriendo las distintas lentes y a cada competidor antes de concluir; no te detengas temprano ni te conformes con la primera pagina de resultados. Cubri estas lentes y profundiza donde haya senal real:
 - GOOGLE ADS: busca en el Centro de Transparencia de Anuncios de Google (adstransparency.google.com) y en SERP si cada competidor pauta. Que ofrecen los anuncios, sobre que terminos, a que landing llevan.
 - META ADS: busca en la Meta Ad Library (facebook.com/ads/library) anuncios activos de cada competidor: angulos, ofertas, si pautan always-on o por rafagas.
 - SEO / SERP: por que terminos rankean (ej "hotel el poblado", "where to stay medellin poblado", su marca), si tienen sitio en ingles, blog/contenido, resultados enriquecidos.
@@ -124,7 +124,7 @@ Todo en espanol. Devolve SOLO el JSON.`;
   let rawText = '';
   try {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), fast ? 55000 : 285000);
+    const t = setTimeout(() => ctrl.abort(), fast ? 150000 : 280000);
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       signal: ctrl.signal,
@@ -136,7 +136,7 @@ Todo en espanol. Devolve SOLO el JSON.`;
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 8000,
-        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: fast ? 4 : 14 }],
+        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: fast ? 4 : 10 }],
         messages: [{ role: 'user', content: prompt }],
       }),
     });
