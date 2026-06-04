@@ -30,6 +30,12 @@ export default function AdminPage() {
     content_investment: '', fees: '', clicks: '', impressions: '',
   })
 
+  const [competitors, setCompetitors] = useState('')
+  const [compMsg, setCompMsg] = useState('')
+  const [compSaving, setCompSaving] = useState(false)
+  const [researching, setResearching] = useState(false)
+  const [researchMsg, setResearchMsg] = useState('')
+
   const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/admin/billing?slug=${SLUG}`)
@@ -39,6 +45,13 @@ export default function AdminPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    fetch(`/api/admin/competitors?slug=${SLUG}`)
+      .then(r => r.json())
+      .then(d => setCompetitors((d.competitors ?? []).join('\n')))
+      .catch(() => {})
+  }, [])
 
   // Prefill form when selecting a month that already has data
   useEffect(() => {
@@ -72,6 +85,30 @@ export default function AdminPage() {
       else setMsg(d.error || 'Error al guardar')
     } catch { setMsg('Error de red') }
     setSaving(false)
+  }
+
+  async function saveCompetitors() {
+    setCompSaving(true); setCompMsg('')
+    try {
+      const lines = competitors.split('\n').map(s => s.trim()).filter(Boolean)
+      const res = await fetch('/api/admin/competitors', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: SLUG, competitors: lines }),
+      })
+      const d = await res.json()
+      setCompMsg(res.ok ? 'Competidores guardados \u2713' : (d.error || 'Error al guardar'))
+    } catch { setCompMsg('Error de red') }
+    setCompSaving(false)
+  }
+
+  async function runResearch() {
+    setResearching(true); setResearchMsg('Investigando la web... (~30-60s)')
+    try {
+      const res = await fetch(`/api/research/competition?slug=${SLUG}`)
+      const d = await res.json()
+      setResearchMsg(res.ok ? `Investigacion actualizada \u2713 (${d.length} car.)` : (d.error || 'Error en la investigacion'))
+    } catch { setResearchMsg('Error de red / timeout') }
+    setResearching(false)
   }
 
   async function logout() {
@@ -181,6 +218,32 @@ export default function AdminPage() {
 
         {/* Source selector (growth only) */}
         <SourceSelector />
+
+        {/* Competencia */}
+        <div className="bg-white border border-gray-100 rounded-xl p-5 mt-5">
+          <h3 className="text-[12px] font-medium text-gray-900 mb-1">Competencia</h3>
+          <p className="text-[11px] text-gray-400 mb-3">Un competidor por linea. Al actualizar la investigacion se analizan estos hoteles (innovacion, promos, viralidad) y el resultado nutre las conclusiones del mes en curso.</p>
+          <textarea
+            value={competitors}
+            onChange={e => { setCompetitors(e.target.value); setCompMsg('') }}
+            rows={5}
+            placeholder={'Diez Hotel\nThe Somos\nBinn Hotel\nMarquee'}
+            className="w-full px-3 py-2 rounded-lg border border-gray-200 text-[13px] focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
+          />
+          <div className="flex items-center justify-end gap-3 pt-3 flex-wrap">
+            {compMsg && <span className={`text-[12px] ${compMsg.includes('\u2713') ? 'text-green-600' : 'text-red-500'}`}>{compMsg}</span>}
+            {researchMsg && <span className={`text-[12px] ${researchMsg.includes('\u2713') ? 'text-green-600' : 'text-gray-500'}`}>{researchMsg}</span>}
+            <button onClick={saveCompetitors} disabled={compSaving}
+              className="px-4 py-2 rounded-lg text-[13px] font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+              {compSaving ? 'Guardando...' : 'Guardar competidores'}
+            </button>
+            <button onClick={runResearch} disabled={researching}
+              className="px-4 py-2 rounded-lg text-[13px] font-medium text-white disabled:opacity-50"
+              style={{ background: '#1a1a1a' }}>
+              {researching ? 'Investigando...' : 'Actualizar investigacion'}
+            </button>
+          </div>
+        </div>
 
         {/* Existing months table */}
         <div className="bg-white border border-gray-100 rounded-xl p-5 mt-5">

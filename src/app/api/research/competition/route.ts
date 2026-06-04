@@ -21,7 +21,6 @@ export async function GET(req: NextRequest) {
     const { data: prop } = await supabase.from('properties').select('id, name').eq('slug', slug).single()
     if (!prop) return NextResponse.json({ error: 'property not found' }, { status: 404 })
 
-    // Competidores configurables por hotel (lectura resiliente: si falta la columna, queda vacio).
     let competitors: string[] = []
     const { data: cRow } = await supabase.from('properties').select('competitors').eq('id', prop.id).maybeSingle()
     const raw = (cRow as { competitors?: unknown } | null)?.competitors
