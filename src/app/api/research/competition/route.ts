@@ -67,7 +67,7 @@ Devolve TEXTO PLANO en espanol (sin markdown: sin '#', sin '---', sin asteriscos
       .filter((b: { type: string }) => b.type === 'text')
       .map((b: { text: string }) => b.text)
       .join('\n\n')
-      .replace(/\n{3,}/g, '\n\n')
+      .replace(/\r/g, '').replace(/([a-z0-9áéíóúñü,;:])[ \t]*\n+[ \t]*([a-z0-9áéíóúñü])/g, '$1 $2').replace(/([a-z0-9áéíóúñü,;:])[ \t]*\n+[ \t]*([a-z0-9áéíóúñü])/g, '$1 $2').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n')
       .trim()
     if (!text) return NextResponse.json({ error: 'empty result' }, { status: 502 })
 
