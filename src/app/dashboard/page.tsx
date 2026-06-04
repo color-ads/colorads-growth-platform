@@ -182,6 +182,27 @@ async function getHistoricalReports(): Promise<MonthlyReport[]> {
   }
 }
 
+async function getProposalTracking(year: number, month: number): Promise<Record<number, { will_execute: string; period: string; comment: string }>> {
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+      { auth: { persistSession: false, autoRefreshToken: false } },
+    )
+    const { data: prop } = await supabase.from('properties').select('id').eq('slug', 'h98').single()
+    if (!prop) return {}
+    const { data: rows } = await supabase
+      .from('proposal_tracking')
+      .select('idx, will_execute, period, comment')
+      .eq('property_id', prop.id).eq('year', year).eq('month', month)
+    const map: Record<number, { will_execute: string; period: string; comment: string }> = {}
+    for (const t of (rows ?? [])) map[t.idx] = { will_execute: t.will_execute, period: t.period ?? '', comment: t.comment ?? '' }
+    return map
+  } catch {
+    return {}
+  }
+}
+
 async function getSourceData(): Promise<{ rows: SourceRow[]; attributable: string[] }> {
   try {
     const supabase = createClient(
@@ -244,10 +265,11 @@ export default async function DashboardPage({
     .toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })
     .replace(/^\w/, (c) => c.toUpperCase())
 
-  const [currentData, historical, sourceData] = await Promise.all([
+  const [currentData, historical, sourceData, proposalTracking] = await Promise.all([
     getCurrentMonthReport(selYear, selMonth),
     getHistoricalReports(),
     getSourceData(),
+    getProposalTracking(selYear, selMonth),
   ])
   const currentReport = currentData?.report ?? null
   const stayDistribution: StayBucket[] = currentData?.stayDistribution ?? []
@@ -345,7 +367,7 @@ export default async function DashboardPage({
               <BookingPaceChart distribution={stayDistribution} monthLabel={periodLabel} />
               <DemographicProfile report={currentReport} historicalReports={historical} property={property} />
               <ChannelBreakdown report={currentReport} property={property} />
-              <InsightsPanel report={currentReport} property={property} />
+              <InsightsPanel report={currentReport} property={property} tracking={proposalTracking} />
             </>
           )}
         </main>

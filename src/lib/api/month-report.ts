@@ -99,18 +99,22 @@ PALANCAS DE GROWTH HACKING HOTELERO (elegir las que encajen con los datos del me
 type Card = { title: string; body: string }
 type AiInsights = { positive: Card[]; attention: Card[]; strategic: Card[] }
 
-// Formatea las propuestas del mes anterior (para el look-back).
-function formatPriorProposals(ai: AiInsights | null): string {
-  if (!ai) return ''
+// Formatea los experimentos PROGRAMADOS para ejecutarse este mes (look-back por ejecucion).
+function formatScheduledExperiments(rows: { title?: string | null; will_execute?: string | null; comment?: string | null }[]): string {
+  if (!rows.length) return ''
   const lines: string[] = []
-  for (const c of (ai.positive || [])) lines.push(`[fortaleza] ${c.title}: ${c.body}`)
-  for (const c of (ai.attention || [])) lines.push(`[a vigilar] ${c.title}: ${c.body}`)
-  for (const c of (ai.strategic || [])) lines.push(`[propuesta] ${c.title}: ${c.body}`)
+  for (const r of rows) {
+    const t = r.title || 'Propuesta'
+    const note = r.comment ? ` (nota del equipo: ${r.comment})` : ''
+    if (r.will_execute === 'yes') lines.push(`[SE EJECUTO -> evaluar contra los datos del mes] ${t}${note}`)
+    else if (r.will_execute === 'no') lines.push(`[NO se ejecuto -> no lo evalues como hecho] ${t}${note}`)
+    else lines.push(`[pendiente de decision] ${t}${note}`)
+  }
   return lines.join('\n')
 }
 
 async function generateInsights(ctx: {
-  hotelName: string; knowledgeBase: string; priorProposals: string; year: number; month: number
+  hotelName: string; knowledgeBase: string; scheduledExperiments: string; year: number; month: number
   attrRevenue: number; totalInvestment: number; roas: number; adCostPct: number; fee: number; successFeePct: number
   google: number; meta: number; content: number; fees: number; clicks: number; cpc: number; impressions: number
   bookingVolume: number; bookingCount: number; avgTicket: number; avgNights: number
@@ -127,13 +131,13 @@ async function generateInsights(ctx: {
 
   const prompt = `Sos consultor senior de growth marketing hotelero de la agencia ColorADS. Entregas conclusiones de nivel consultoria sobre el canal de VENTA DIRECTA del hotel: precisas, accionables y honestas. Las lee el dueno del hotel, asi que deben sonar expertas y dejar bien parado el trabajo de la agencia. REGLA DE ORO: no inventes datos ni cifras de mejora; usa SOLO los numeros del mes que te doy, tu base de conocimiento y criterio profesional.
 
-El analisis es un CICLO MENSUAL de experimentacion: cada mes cerramos con lo aprendido y planteamos hipotesis para probar el mes siguiente; al mes siguiente evaluamos si funcionaron.
+El analisis es un CICLO MENSUAL de experimentacion: cada mes planteamos hipotesis para probar el mes siguiente; al mes siguiente evaluamos SOLO los experimentos que efectivamente se ejecutaron (segun lo que marco el equipo), mirando si los numeros se movieron.
 
 === BASE DE CONOCIMIENTO DEL HOTEL Y SU ESTRATEGIA ===
 ${ctx.knowledgeBase || '(sin base; usa criterio general de marketing hotelero y la premisa de captar extranjeros YA presentes en el pais, nunca campanas al exterior)'}
 
-=== PROPUESTAS DEL MES ANTERIOR (lo que planteamos probar este mes) ===
-${ctx.priorProposals || '(no hay analisis del mes anterior; este es el punto de partida del ciclo)'}
+=== EXPERIMENTOS PROGRAMADOS PARA ESTE MES (lo que el equipo marco para ejecutar) ===
+${ctx.scheduledExperiments || '(no hay experimentos marcados para ejecutarse este mes)'}
 
 === DATOS REALES DE ${mesNombre} ${ctx.year} ===
 - Facturacion atribuible (venta directa generada por el marketing): ${cop(ctx.attrRevenue)}
@@ -150,9 +154,9 @@ ${ctx.priorProposals || '(no hay analisis del mes anterior; este es el punto de 
 
 === REGLAS DE LA ENTREGA ===
 - EXACTAMENTE 4 items.
-- SI hay propuestas del mes anterior: dedica 1 o 2 items a EVALUAR si esas propuestas funcionaron, mirando como se movieron los numeros de este mes ("good" si funciono, "watch" si no rindio o sigue pendiente). Se honesto: si algo no se movio, decilo claramente.
+- SI hay experimentos marcados como "SE EJECUTO": dedica 1 o 2 items a EVALUARLOS contra los numeros de este mes ("good" si funciono, "watch" si no rindio). Se honesto: si el numero no se movio, decilo. NUNCA evalues como exito algo marcado "NO se ejecuto" o "pendiente"; a lo sumo mencionalo como pendiente.
 - Los items restantes (al menos 2) son PROPUESTAS/EXPERIMENTOS para probar el PROXIMO mes ("action"), de las palancas de la base de conocimiento, atados a estos numeros y respetando la premisa de targeting (extranjeros ya en el pais; jamas campanas al exterior). Planteales como hipotesis: que vamos a probar y que esperamos que mueva.
-- SI NO hay propuestas del mes anterior: los 4 son propuestas/experimentos para el proximo mes (3-4 "action", como mucho 1 "good"/"watch" de contexto).
+- SI NO hay experimentos ejecutados este mes: los 4 son propuestas/experimentos para el proximo mes (3-4 "action", como mucho 1 "good"/"watch" de contexto).
 - En al menos un item evalua el ROAS de ${ctx.roas.toFixed(1)}x usando el benchmark de comision OTA de la base de conocimiento (no rangos genericos) y traducilo a una accion.
 - Cada item atado a un numero real del mes. Nada generico, sin promesas garantizadas ni cifras inventadas.
 - LARGO (el texto va en tarjetas): "title" 3 a 6 palabras. "body" CONCISO: 1 o 2 frases, MAXIMO ~45 palabras.
@@ -301,12 +305,12 @@ export async function buildMonthReport(slug: string, year: number, month: number
       // Mes cerrado con analisis ya hecho: congelado (registro de hipotesis). No regenerar.
       aiInsights = existingAi
     } else {
-      // Look-back: propuestas del mes anterior (de la cache).
-      const pm = month === 1 ? 12 : month - 1
-      const py = month === 1 ? year - 1 : year
-      const { data: prevRow } = await supabase.from('monthly_dashboard_cache')
-        .select('payload').eq('property_id', property.id).eq('year', py).eq('month', pm).maybeSingle()
-      const prevAi = ((prevRow?.payload as { aiInsights?: AiInsights } | null)?.aiInsights) ?? null
+      // Look-back: experimentos PROGRAMADOS para ejecutarse este mes (periodo == este mes).
+      const periodKey = `${year}-${pad(month)}`
+      const { data: trkRows } = await supabase.from('proposal_tracking')
+        .select('title, will_execute, period, comment')
+        .eq('property_id', property.id).eq('period', periodKey)
+      const scheduledExperiments = formatScheduledExperiments(trkRows ?? [])
 
       let attrRevenue = 0
       const attrSet = new Set(attrSources)
@@ -318,7 +322,7 @@ export async function buildMonthReport(slug: string, year: number, month: number
       const totalInvestment = Number(billing.total_investment) || 0
       const r = await generateInsights({
         hotelName: property.name, knowledgeBase: HOTEL_KB[slug] ?? '',
-        priorProposals: formatPriorProposals(prevAi),
+        scheduledExperiments,
         year, month, attrRevenue, totalInvestment,
         roas: roasFrom(attrRevenue, totalInvestment),
         adCostPct: adCostPctFrom(attrRevenue, totalInvestment),
