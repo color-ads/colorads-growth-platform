@@ -38,7 +38,7 @@ Si de algun competidor NO hay nada nuevo o relevante para destacar, decilo en un
 
 Ademas, 2 o 3 ideas accionables para ${prop.name}, recordando que el publico son extranjeros que YA estan en Colombia/Medellin (demanda en destino; nada de campanas al exterior).
 
-Devolve TEXTO PLANO en espanol (sin markdown: sin '#', sin '---', sin asteriscos; parrafos cortos y limpios), conciso (~400 palabras). Solo afirma cosas respaldadas en la web. Lista breve de referencias (URLs) al final, sin cortarte antes.`
+Devolve TEXTO PLANO en espanol (sin markdown: sin '#', sin '---', sin asteriscos; parrafos cortos y limpios), conciso (~400 palabras). Arranca DIRECTO con el analisis: NO escribas preambulos ni frases como "aqui va el analisis" o "en texto plano". Solo afirma cosas respaldadas en la web. Lista breve de referencias (URLs) al final, sin cortarte antes.`
 
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 290000)
@@ -67,6 +67,7 @@ Devolve TEXTO PLANO en espanol (sin markdown: sin '#', sin '---', sin asteriscos
       .filter((b: { type: string }) => b.type === 'text')
       .map((b: { text: string }) => b.text)
       .join('\n\n')
+      .replace(/\n{3,}/g, '\n\n')
       .trim()
     if (!text) return NextResponse.json({ error: 'empty result' }, { status: 502 })
 
