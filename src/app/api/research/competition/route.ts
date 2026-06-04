@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 // Investigacion web de competencia (manual). Genera/actualiza properties.ai_competition_kb.
-// Liviano (2 busquedas) y enfocado SOLO en competidores + practicas; texto plano.
+// Los competidores se configuran por hotel en properties.competitors (editable desde el admin).
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
@@ -21,14 +21,25 @@ export async function GET(req: NextRequest) {
     const { data: prop } = await supabase.from('properties').select('id, name').eq('slug', slug).single()
     if (!prop) return NextResponse.json({ error: 'property not found' }, { status: 404 })
 
-    const prompt = `Sos analista de inteligencia competitiva hotelera. Con como MAXIMO 2 busquedas web enfocadas, investiga hoteles boutique o medianos en El Poblado, Medellin que compitan con ${prop.name} (hashtag98.com.co).
+    // Competidores configurables por hotel (lectura resiliente: si falta la columna, queda vacio).
+    let competitors: string[] = []
+    const { data: cRow } = await supabase.from('properties').select('competitors').eq('id', prop.id).maybeSingle()
+    const raw = (cRow as { competitors?: unknown } | null)?.competitors
+    if (Array.isArray(raw)) competitors = (raw as unknown[]).map((x) => String(x)).filter(Boolean)
+    const list = competitors.length ? competitors.join(', ') : 'hoteles boutique o medianos comparables en El Poblado, Medellin'
 
-Devolve TEXTO PLANO en espanol (sin markdown: sin '#', sin '---', sin asteriscos; parrafos cortos y limpios), util como base para un consultor de growth de venta directa. NO describas a ${prop.name} en si (ya tenemos sus datos); enfocate SOLO en:
-- 3 competidores REALES de El Poblado y que hacen BIEN en venta directa (tarifa o beneficio por reservar directo, contenido/redes, sitio de reservas propio, resenas o premios como prueba social).
-- 2 o 3 buenas practicas de venta directa aplicables a un hotel de El Poblado, recordando que el publico son extranjeros que YA estan en Colombia/Medellin (demanda en destino; nada de campanas al exterior).
-- Una lista breve de referencias (URLs) al final.
+    const prompt = `Sos analista de growth e inteligencia competitiva hotelera. Con como MAXIMO 3 busquedas web enfocadas, analiza estos competidores REALES de ${prop.name} en El Poblado, Medellin: ${list}.
 
-Solo afirma cosas respaldadas en la web; no inventes. Se conciso (~350 palabras) y NO te cortes antes de las referencias.`
+Para CADA competidor, busca señales que valga la pena DESTACAR para el growth de la venta directa:
+- Innovacion y tecnificacion: motor de reservas propio, app, chatbot o WhatsApp, automatizaciones, check-in digital, upsell automatizado.
+- Promos y codigos: ofertas, codigos de descuento, tarifa de socio o directo, paquetes, beneficios exclusivos por reservar directo.
+- Viralidad en redes: contenido que les funciona, formatos o reels con mucha traccion, campañas, colaboraciones con creadores.
+- Cualquier otra palanca de growth que los haga destacar.
+Si de algun competidor NO hay nada nuevo o relevante para destacar, decilo en una linea: NO inventes ni rellenes.
+
+Ademas, 2 o 3 ideas accionables para ${prop.name}, recordando que el publico son extranjeros que YA estan en Colombia/Medellin (demanda en destino; nada de campanas al exterior).
+
+Devolve TEXTO PLANO en espanol (sin markdown: sin '#', sin '---', sin asteriscos; parrafos cortos y limpios), conciso (~400 palabras). Solo afirma cosas respaldadas en la web. Lista breve de referencias (URLs) al final, sin cortarte antes.`
 
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 290000)
@@ -39,8 +50,8 @@ Solo afirma cosas respaldadas en la web; no inventes. Se conciso (~350 palabras)
         headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
-          max_tokens: 2000,
-          tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }],
+          max_tokens: 2400,
+          tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
           messages: [{ role: 'user', content: prompt }],
         }),
         signal: controller.signal,
@@ -63,7 +74,7 @@ Solo afirma cosas respaldadas en la web; no inventes. Se conciso (~350 palabras)
     const { error } = await supabase.from('properties').update({ ai_competition_kb: text }).eq('id', prop.id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    return NextResponse.json({ ok: true, length: text.length, competition_kb: text })
+    return NextResponse.json({ ok: true, length: text.length, competitors, competition_kb: text })
   } catch (e) {
     const err = e as Error
     const msg = err.name === 'AbortError' ? 'timeout: la busqueda web tardo demasiado' : err.message
