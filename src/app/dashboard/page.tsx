@@ -5,6 +5,7 @@ import { Sidebar } from '@/components/dashboard/Sidebar'
 import { KPIStrip } from '@/components/dashboard/KPIStrip'
 import { RevenueExplorer, type SourceRow } from '@/components/dashboard/RevenueExplorer'
 import { DemographicProfile } from '@/components/dashboard/DemographicProfile'
+import CompetitionPanel from '@/components/dashboard/CompetitionPanel';
 import { InsightsPanel, ChannelBreakdown, RoiStrip } from '@/components/dashboard/InsightsPanel'
 import type { MonthlyReport, Property } from '@/types'
 import { MonthSelector } from '@/components/dashboard/MonthSelector'
@@ -367,6 +368,7 @@ export default async function DashboardPage({
               <BookingPaceChart distribution={stayDistribution} monthLabel={periodLabel} />
               <DemographicProfile report={currentReport} historicalReports={historical} property={property} />
               <ChannelBreakdown report={currentReport} property={property} />
+              <CompetitionPanel slug="h98" />
               <InsightsPanel report={currentReport} property={property} tracking={proposalTracking} editable={selYear === nowY && selMonth === nowM} />
             </>
           )}
