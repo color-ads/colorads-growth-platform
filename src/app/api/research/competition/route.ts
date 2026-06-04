@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 // Investigacion web de competencia (manual). Genera/actualiza properties.ai_competition_kb.
-// Liviano a proposito: pocas busquedas + salida corta, para no exceder el timeout de la function.
+// Liviano (2 busquedas) y enfocado SOLO en competidores + practicas; texto plano.
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
@@ -23,11 +23,12 @@ export async function GET(req: NextRequest) {
 
     const prompt = `Sos analista de inteligencia competitiva hotelera. Con como MAXIMO 2 busquedas web enfocadas, investiga hoteles boutique o medianos en El Poblado, Medellin que compitan con ${prop.name} (hashtag98.com.co).
 
-Entrega un TEXTO en espanol, CONCISO (~300 palabras, NO JSON), util como base para un consultor de growth de venta directa:
-- 3 competidores reales y que hacen BIEN en venta directa (tarifa o beneficio por reservar directo, contenido/redes, sitio de reservas, resenas).
-- 2 o 3 buenas practicas de venta directa aplicables a un hotel de El Poblado.
-- Premisa: el publico son extranjeros que YA estan en Colombia/Medellin (demanda en destino); nada de campanas al exterior.
-- Solo afirma cosas respaldadas en la web; no inventes. Breve lista de referencias (URLs) al final.`
+Devolve TEXTO PLANO en espanol (sin markdown: sin '#', sin '---', sin asteriscos; parrafos cortos y limpios), util como base para un consultor de growth de venta directa. NO describas a ${prop.name} en si (ya tenemos sus datos); enfocate SOLO en:
+- 3 competidores REALES de El Poblado y que hacen BIEN en venta directa (tarifa o beneficio por reservar directo, contenido/redes, sitio de reservas propio, resenas o premios como prueba social).
+- 2 o 3 buenas practicas de venta directa aplicables a un hotel de El Poblado, recordando que el publico son extranjeros que YA estan en Colombia/Medellin (demanda en destino; nada de campanas al exterior).
+- Una lista breve de referencias (URLs) al final.
+
+Solo afirma cosas respaldadas en la web; no inventes. Se conciso (~350 palabras) y NO te cortes antes de las referencias.`
 
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 290000)
@@ -38,7 +39,7 @@ Entrega un TEXTO en espanol, CONCISO (~300 palabras, NO JSON), util como base pa
         headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
-          max_tokens: 1100,
+          max_tokens: 2000,
           tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }],
           messages: [{ role: 'user', content: prompt }],
         }),
