@@ -6,6 +6,7 @@ import { KPIStrip } from '@/components/dashboard/KPIStrip'
 import { RevenueExplorer, type SourceRow } from '@/components/dashboard/RevenueExplorer'
 import { DemographicProfile } from '@/components/dashboard/DemographicProfile'
 import CompetitionPanel from '@/components/dashboard/CompetitionPanel';
+import { ExecutiveSummary } from '@/components/dashboard/ExecutiveSummary'
 import { InsightsPanel, ChannelBreakdown, RoiStrip } from '@/components/dashboard/InsightsPanel'
 import type { MonthlyReport, Property } from '@/types'
 import { MonthSelector } from '@/components/dashboard/MonthSelector'
@@ -251,7 +252,8 @@ export default async function DashboardPage({
   searchParams: Promise<{ m?: string; y?: string; tab?: string }>
 }) {
   const sp = await searchParams
-  const tab: 'performance' | 'acciones' = sp.tab === 'acciones' ? 'acciones' : 'performance'
+  const tab: 'performance' | 'acciones' | 'resumen' =
+    sp.tab === 'acciones' ? 'acciones' : sp.tab === 'resumen' ? 'resumen' : 'performance'
   const now = new Date()
   const nowY = now.getFullYear()
   const nowM = now.getMonth() + 1
@@ -357,7 +359,7 @@ export default async function DashboardPage({
             <>
               {/* Tabs: Performance (metricas) y Acciones y conclusiones (propuestas + competencia) */}
               <div className="flex gap-1 border-b border-gray-200">
-                {([['performance', 'Performance'], ['acciones', 'Acciones y conclusiones']] as const).map(([key, label]) => (
+                {([['performance', 'Performance'], ['acciones', 'Acciones y conclusiones'], ['resumen', 'Resumen ejecutivo']] as const).map(([key, label]) => (
                   <a
                     key={key}
                     href={`${selYear === nowY && selMonth === nowM ? '/dashboard' : `/dashboard?y=${selYear}&m=${selMonth}`}${selYear === nowY && selMonth === nowM ? '?' : '&'}tab=${key}`}
@@ -386,12 +388,23 @@ export default async function DashboardPage({
                   <DemographicProfile report={currentReport} historicalReports={historical} property={property} />
                   <ChannelBreakdown report={currentReport} property={property} />
                 </>
-              ) : (
+              ) : tab === 'acciones' ? (
                 <>
                   <InsightsPanel report={currentReport} property={property} tracking={proposalTracking} editable={selYear === nowY && selMonth === nowM} />
                   {/* Conclusiones de competencia: concentradas en el mes en curso. No se muestran en meses anteriores. */}
                   {selYear === nowY && selMonth === nowM && <CompetitionPanel slug="h98" />}
                 </>
+              ) : (
+                <ExecutiveSummary
+                  report={currentReport}
+                  prevReport={prevReport}
+                  property={property}
+                  periodLabel={periodLabel}
+                  tracking={proposalTracking}
+                  year={selYear}
+                  month={selMonth}
+                  canGenerate={selYear === nowY && selMonth === nowM}
+                />
               )}
             </>
           )}
