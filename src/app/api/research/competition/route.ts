@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { adsEnabled, fetchGoogleAds } from '@/lib/ads/serpapi';
-import { buildGoogleAdsBlock } from '@/lib/ads/buildAdsBlock';
+import { buildGoogleAdsBlock, toStoredGoogleAds } from '@/lib/ads/buildAdsBlock';
 import type { AdvertiserMap, GoogleAdsBundle } from '@/lib/ads/types';
 
 export const dynamic = 'force-dynamic';
@@ -231,6 +231,8 @@ Todo en espanol. Devolve SOLO el JSON.`;
   }
 
   data.generatedAt = new Date().toISOString();
+  // Adjuntar creatividades verificadas de Google Ads (para mostrar ejemplos/imagenes en el tablero).
+  data.googleAds = toStoredGoogleAds(adsBundle);
   const kbText = buildKbText(data);
 
   const upd = await db.from('properties').update({ ai_competition_data: data, ai_competition_kb: kbText }).eq('id', prop.id);

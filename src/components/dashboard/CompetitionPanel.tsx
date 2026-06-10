@@ -8,6 +8,13 @@ type Finding = {
   whatTheyDo?: string; weDont?: string; opportunity?: string;
   evidence?: Evidence[]; confidence?: string;
 };
+type StoredCreative = {
+  format: string; headline: string | null; description: string | null; cta: string | null;
+  landing: string | null; firstShown: string | null; lastShown: string | null;
+  totalDaysShown: number | null; regions: string[]; imageUrl: string | null; detailsLink: string | null;
+};
+type StoredAdvertiser = { group: string; advertiserName: string; totalResults: number; creatives: StoredCreative[] };
+type StoredGoogleAds = { fetchedAt?: string; mode?: string; advertisers?: StoredAdvertiser[] };
 type Data = {
   ourHotel?: { name?: string; url?: string; alreadyDoing?: string[] };
   findings?: Finding[];
@@ -15,6 +22,7 @@ type Data = {
   diggingNote?: string;
   summary?: string;
   generatedAt?: string;
+  googleAds?: StoredGoogleAds | null;
 };
 
 const BLUE = '#457B9D';
@@ -54,6 +62,78 @@ function Block({ label, color, accent, children }: { label: string; color: strin
   );
 }
 
+function fmtBadge(format: string) {
+  const f = (format || '').toUpperCase();
+  const map: Record<string, { bg: string; fg: string; label: string }> = {
+    IMAGE: { bg: '#eef4f8', fg: BLUE, label: 'Imagen' },
+    VIDEO: { bg: '#f3eefb', fg: '#6b4ea0', label: 'Video' },
+    TEXT: { bg: '#eef1f5', fg: '#5b6776', label: 'Texto' },
+  };
+  return map[f] || { bg: '#eef1f5', fg: '#6b7686', label: format || '—' };
+}
+
+function AdCard({ c }: { c: StoredCreative }) {
+  const [imgOk, setImgOk] = useState(true);
+  const badge = fmtBadge(c.format);
+  const text = c.headline || c.description || '';
+  const period = c.firstShown || c.lastShown ? `${c.firstShown || '?'} → ${c.lastShown || '?'}` : '';
+  const showImg = !!c.imageUrl && imgOk;
+  const card = (
+    <div style={{ width: 190, border: '1px solid #e6eaf0', borderRadius: 12, overflow: 'hidden', background: '#fff', display: 'flex', flexDirection: 'column' }}>
+      {showImg ? (
+        <img src={c.imageUrl as string} alt="" onError={() => setImgOk(false)} style={{ width: '100%', height: 120, objectFit: 'cover', background: '#f4f6f9' }} />
+      ) : (
+        <div style={{ height: 120, background: '#f4f6f9', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px 12px' }}>
+          <span style={{ fontSize: 12, color: '#5b6776', lineHeight: 1.4, textAlign: 'center', maxHeight: 100, overflow: 'hidden' }}>{text || '(creativo sin vista previa)'}</span>
+        </div>
+      )}
+      <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+        <span style={{ alignSelf: 'flex-start', fontSize: 10, fontWeight: 700, color: badge.fg, background: badge.bg, borderRadius: 6, padding: '2px 7px' }}>{badge.label}</span>
+        {text && showImg && <div style={{ fontSize: 11.5, color: '#3d4654', lineHeight: 1.35, maxHeight: 48, overflow: 'hidden' }}>{text}</div>}
+        {period && <div style={{ fontSize: 10, color: '#8a93a1' }}>{period}{c.totalDaysShown ? ` · ${c.totalDaysShown}d` : ''}</div>}
+        {c.regions?.length > 0 && <div style={{ fontSize: 10, color: '#8a93a1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.regions.slice(0, 4).join(', ')}{c.regions.length > 4 ? '…' : ''}</div>}
+      </div>
+    </div>
+  );
+  return c.detailsLink
+    ? <a href={c.detailsLink} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>{card}</a>
+    : card;
+}
+
+function AdGallery({ ads, hotelName }: { ads: StoredGoogleAds; hotelName?: string }) {
+  const advertisers = (ads.advertisers || []).filter((a) => a.creatives && a.creatives.length);
+  const byGroup = new Map<string, { name: string; total: number; creatives: StoredCreative[] }>();
+  for (const a of advertisers) {
+    const g = byGroup.get(a.group) || { name: a.group === 'self' ? (hotelName || 'Nuestro hotel') : a.group, total: 0, creatives: [] };
+    g.total += a.totalResults || 0;
+    g.creatives.push(...a.creatives);
+    byGroup.set(a.group, g);
+  }
+  const groups = [...byGroup.entries()].sort((a, b) => (a[0] === 'self' ? -1 : b[0] === 'self' ? 1 : 0));
+  if (!groups.length) return null;
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: INK, marginBottom: 3 }}>Anuncios en Google Ads — datos verificados de Transparencia</div>
+      <p style={{ margin: '0 0 14px', fontSize: 12, color: '#7a8699', maxWidth: 760, lineHeight: 1.5 }}>
+        Ejemplos reales de lo que pauta cada actor hoy. Clic en un anuncio para verlo en el Centro de Transparencia de Anuncios de Google.
+      </p>
+      {groups.map(([key, g]) => {
+        const creatives = [...g.creatives].sort((x, y) => (y.lastShown || '').localeCompare(x.lastShown || '')).slice(0, 4);
+        return (
+          <div key={key} style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: key === 'self' ? BLUE : INK, marginBottom: 8 }}>
+              {g.name}{g.total > 0 && <span style={{ fontWeight: 500, color: '#8a93a1' }}> · {g.total} anuncios activos</span>}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              {creatives.map((c, i) => <AdCard key={i} c={c} />)}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function CompetitionPanel({ slug = 'h98' }: { slug?: string }) {
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,7 +166,6 @@ export default function CompetitionPanel({ slug = 'h98' }: { slug?: string }) {
 
   const findings = (data.findings || []).filter((f) => f && (f.title || f.whatTheyDo));
   const already = (data.ourHotel?.alreadyDoing || []).filter(Boolean);
-  const also = (data.alsoChecked || []).filter(Boolean);
   const updated = data.generatedAt
     ? new Date(data.generatedAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })
     : null;
@@ -156,13 +235,8 @@ export default function CompetitionPanel({ slug = 'h98' }: { slug?: string }) {
         </div>
       )}
 
-      {also.length > 0 && (
-        <div style={{ marginTop: 4 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#7a8699', marginBottom: 6 }}>También revisado (sin acción):</div>
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
-            {also.map((x, i) => <li key={i} style={{ fontSize: 12, color: '#8a93a1', lineHeight: 1.5 }}>{x}</li>)}
-          </ul>
-        </div>
+      {data.googleAds && Array.isArray(data.googleAds.advertisers) && data.googleAds.advertisers.length > 0 && (
+        <AdGallery ads={data.googleAds} hotelName={data.ourHotel?.name} />
       )}
     </section>
   );

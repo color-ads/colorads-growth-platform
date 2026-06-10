@@ -5,6 +5,59 @@
 
 import type { AdCreative, AdvertiserAds, GoogleAdsBundle } from './types';
 
+/** Creativo aplanado para guardar en ai_competition_data y renderizar en el tablero. */
+export interface StoredAdCreative {
+  format: string;
+  headline: string | null;
+  description: string | null;
+  cta: string | null;
+  landing: string | null;
+  firstShown: string | null;
+  lastShown: string | null;
+  totalDaysShown: number | null;
+  regions: string[];
+  imageUrl: string | null;
+  detailsLink: string | null;
+}
+export interface StoredAdAdvertiser {
+  group: string; // 'self' | nombre del competidor
+  advertiserName: string;
+  totalResults: number;
+  creatives: StoredAdCreative[];
+}
+export interface StoredGoogleAds {
+  fetchedAt: string;
+  mode: 'fast' | 'deep';
+  advertisers: StoredAdAdvertiser[];
+}
+
+/** Aplana el bundle a la forma persistible/renderizable. null si no hay datos. */
+export function toStoredGoogleAds(bundle: GoogleAdsBundle | null): StoredGoogleAds | null {
+  if (!bundle) return null;
+  const mapAdv = (group: string, a: AdvertiserAds): StoredAdAdvertiser => ({
+    group,
+    advertiserName: a.advertiserName,
+    totalResults: a.totalResults,
+    creatives: a.creatives.map((c) => ({
+      format: c.format,
+      headline: c.content.headline || null,
+      description: c.content.description || null,
+      cta: c.content.callToAction || null,
+      landing: c.content.landingPageUrl || c.content.visibleLink || null,
+      firstShown: c.firstShown,
+      lastShown: c.lastShown,
+      totalDaysShown: c.totalDaysShown,
+      regions: c.regions,
+      imageUrl: c.content.imageUrl || null,
+      detailsLink: c.detailsLink || null,
+    })),
+  });
+  const advertisers: StoredAdAdvertiser[] = [];
+  for (const a of bundle.self) advertisers.push(mapAdv('self', a));
+  for (const [name, arr] of Object.entries(bundle.competitors)) for (const a of arr) advertisers.push(mapAdv(name, a));
+  return { fetchedAt: bundle.fetchedAt, mode: bundle.mode, advertisers };
+}
+
 function fmtCreative(c: AdCreative): string {
   const lines: string[] = [];
   const text = c.content.headline || c.content.description || '(creativo visual sin texto)';

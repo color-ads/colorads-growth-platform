@@ -1,33 +1,23 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Calendar, History, Search, Camera, Building2, Settings, Bell, TrendingUp, Users, ChevronDown, LogOut } from 'lucide-react'
+import { LayoutDashboard } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Property } from '@/types'
 
 interface SidebarProps {
   property: Property
-  alertCount?: number
 }
 
+// Solo se listan secciones con pagina real. Los destinos que aun no existen
+// no se muestran para evitar links rotos (404) en el tablero del cliente.
 const navItems = [
   { label: 'Reportes', items: [
     { href: '/dashboard', label: 'Performance', icon: LayoutDashboard },
-    { href: '/dashboard/historico', label: 'Histórico', icon: History },
-    { href: '/dashboard/audiencias', label: 'Audiencias', icon: Users },
-  ]},
-  { label: 'Canales', items: [
-    { href: '/dashboard/google-ads', label: 'Google Ads', icon: Search, statusColor: 'bg-green-400' },
-    { href: '/dashboard/meta-ads', label: 'Meta Ads', icon: Camera, statusColor: 'bg-green-400' },
-    { href: '/dashboard/cloudbeds', label: 'Cloudbeds', icon: Building2, statusColor: 'bg-green-400' },
-  ]},
-  { label: 'Gestión', items: [
-    { href: '/dashboard/contenidos', label: 'Contenidos', icon: Calendar, statusColor: 'bg-amber-400' },
-    { href: '/dashboard/informe', label: 'Informe mensual', icon: TrendingUp },
   ]},
 ]
 
-export function Sidebar({ property, alertCount = 0 }: SidebarProps) {
+export function Sidebar({ property }: SidebarProps) {
   const pathname = usePathname()
   const primaryColor = property.primary_color || '#0ea5e9'
 
@@ -78,36 +68,12 @@ export function Sidebar({ property, alertCount = 0 }: SidebarProps) {
                 >
                   <item.icon className="w-4 h-4 flex-shrink-0" />
                   <span className="flex-1">{item.label}</span>
-                  {'statusColor' in item && (
-                    <span className={cn('w-1.5 h-1.5 rounded-full', item.statusColor)} />
-                  )}
                 </Link>
               )
             })}
           </div>
         ))}
       </nav>
-
-      {/* Footer */}
-      <div className="border-t border-gray-100 p-3 space-y-1">
-        <Link href="/dashboard/alertas" className="flex items-center gap-2.5 px-2 py-1.5 text-[12px] text-gray-500 hover:text-gray-800 rounded-md hover:bg-gray-50">
-          <Bell className="w-3.5 h-3.5" />
-          <span>Alertas</span>
-          {alertCount > 0 && (
-            <span className="ml-auto text-[10px] font-medium bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">
-              {alertCount}
-            </span>
-          )}
-        </Link>
-        <Link href="/dashboard/configuracion" className="flex items-center gap-2.5 px-2 py-1.5 text-[12px] text-gray-500 hover:text-gray-800 rounded-md hover:bg-gray-50">
-          <Settings className="w-3.5 h-3.5" />
-          <span>Configuración</span>
-        </Link>
-        <button className="w-full flex items-center gap-2.5 px-2 py-1.5 text-[12px] text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-50">
-          <LogOut className="w-3.5 h-3.5" />
-          <span>Cerrar sesión</span>
-        </button>
-      </div>
     </aside>
   )
 }

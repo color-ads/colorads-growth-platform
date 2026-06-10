@@ -248,9 +248,10 @@ function facturacionForMonth(
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ m?: string; y?: string }>
+  searchParams: Promise<{ m?: string; y?: string; tab?: string }>
 }) {
   const sp = await searchParams
+  const tab: 'performance' | 'acciones' = sp.tab === 'acciones' ? 'acciones' : 'performance'
   const now = new Date()
   const nowY = now.getFullYear()
   const nowM = now.getMonth() + 1
@@ -321,7 +322,7 @@ export default async function DashboardPage({
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
-      <Sidebar property={property} alertCount={2} />
+      <Sidebar property={property} />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Topbar */}
@@ -342,7 +343,7 @@ export default async function DashboardPage({
               <span className="text-[11px] text-gray-400">Actualizado: {refreshedLabel}</span>
             )}
             <RefreshButton year={selYear} month={selMonth} />
-            <MonthSelector year={nowY} upTo={nowM} selected={selYear === nowY ? selMonth : 0} />
+            <MonthSelector year={nowY} upTo={nowM} selected={selYear === nowY ? selMonth : 0} tab={tab} />
           </div>
         </header>
 
@@ -354,22 +355,44 @@ export default async function DashboardPage({
             </div>
           ) : (
             <>
-              <KPIStrip
-                report={currentReport}
-                prevReport={prevReport}
-                property={property}
-              />
-              <RevenueExplorer
-                rows={sourceData.rows}
-                attributable={sourceData.attributable}
-                property={property}
-              />
-              <RoiStrip report={currentReport} property={property} />
-              <BookingPaceChart distribution={stayDistribution} monthLabel={periodLabel} />
-              <DemographicProfile report={currentReport} historicalReports={historical} property={property} />
-              <ChannelBreakdown report={currentReport} property={property} />
-              <CompetitionPanel slug="h98" />
-              <InsightsPanel report={currentReport} property={property} tracking={proposalTracking} editable={selYear === nowY && selMonth === nowM} />
+              {/* Tabs: Performance (metricas) y Acciones y conclusiones (propuestas + competencia) */}
+              <div className="flex gap-1 border-b border-gray-200">
+                {([['performance', 'Performance'], ['acciones', 'Acciones y conclusiones']] as const).map(([key, label]) => (
+                  <a
+                    key={key}
+                    href={`${selYear === nowY && selMonth === nowM ? '/dashboard' : `/dashboard?y=${selYear}&m=${selMonth}`}${selYear === nowY && selMonth === nowM ? '?' : '&'}tab=${key}`}
+                    className={`px-4 py-2 text-[13px] border-b-2 -mb-px transition-colors ${tab === key ? 'font-medium' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                    style={tab === key ? { borderColor: property.primary_color, color: property.primary_color } : {}}
+                  >
+                    {label}
+                  </a>
+                ))}
+              </div>
+
+              {tab === 'performance' ? (
+                <>
+                  <KPIStrip
+                    report={currentReport}
+                    prevReport={prevReport}
+                    property={property}
+                  />
+                  <RevenueExplorer
+                    rows={sourceData.rows}
+                    attributable={sourceData.attributable}
+                    property={property}
+                  />
+                  <RoiStrip report={currentReport} property={property} />
+                  <BookingPaceChart distribution={stayDistribution} monthLabel={periodLabel} />
+                  <DemographicProfile report={currentReport} historicalReports={historical} property={property} />
+                  <ChannelBreakdown report={currentReport} property={property} />
+                </>
+              ) : (
+                <>
+                  <InsightsPanel report={currentReport} property={property} tracking={proposalTracking} editable={selYear === nowY && selMonth === nowM} />
+                  {/* Conclusiones de competencia: concentradas en el mes en curso. No se muestran en meses anteriores. */}
+                  {selYear === nowY && selMonth === nowM && <CompetitionPanel slug="h98" />}
+                </>
+              )}
             </>
           )}
         </main>
