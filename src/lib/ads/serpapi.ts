@@ -130,6 +130,11 @@ async function fetchDetail(
     if (!content.imageUrl && c.thumbnail) content.imageUrl = String(c.thumbnail);
     if (!content.videoUrl && c.video_link) content.videoUrl = String(c.video_link);
   }
+  // Si es video sin thumbnail propio, derivar la miniatura del ID de YouTube (sin costo extra).
+  if (!content.imageUrl && content.videoUrl) {
+    const m = content.videoUrl.match(/(?:youtube\.com\/embed\/|youtu\.be\/|[?&]v=)([\w-]{11})/);
+    if (m) content.imageUrl = `https://i.ytimg.com/vi/${m[1]}/hqdefault.jpg`;
+  }
   return { regions, content };
 }
 
@@ -189,6 +194,11 @@ export async function fetchGoogleAds(map: AdvertiserMap, opts: { mode: 'fast' | 
       for (const arr of perAdv.values()) {
         const top = byRecency(arr)[0];
         if (top && !seen.has(top.id)) { seen.add(top.id); pick.push(top); }
+      }
+      // 1b) Garantizar el video mas reciente por advertiser (asi su thumbnail queda disponible).
+      for (const arr of perAdv.values()) {
+        const v = byRecency(arr).find((c) => (c.format || '').toUpperCase() === 'VIDEO');
+        if (v && !seen.has(v.id)) { seen.add(v.id); pick.push(v); }
       }
       // 2) Llenar el resto del cupo por recencia global.
       for (const c of byRecency(allCreatives)) {
