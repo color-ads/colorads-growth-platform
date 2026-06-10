@@ -173,10 +173,27 @@ export async function fetchGoogleAds(map: AdvertiserMap, opts: { mode: 'fast' | 
 
     let detailsFetched = 0;
     if (globalDetailCap > 0 && allCreatives.length) {
-      const ranked = allCreatives
-        .filter((c) => c.id)
-        .sort((a, b) => (b.lastShown || '').localeCompare(a.lastShown || ''))
-        .slice(0, globalDetailCap);
+      const byRecency = (arr: AdCreative[]) => [...arr].sort((a, b) => (b.lastShown || '').localeCompare(a.lastShown || ''));
+      const seen = new Set<string>();
+      const pick: AdCreative[] = [];
+      // 1) Garantizar al menos 1 detalle por advertiser (asi ningun competidor queda sin vista previa).
+      const perAdv = new Map<string, AdCreative[]>();
+      for (const c of allCreatives) {
+        if (!c.id) continue;
+        const arr = perAdv.get(c.advertiserId) || [];
+        arr.push(c);
+        perAdv.set(c.advertiserId, arr);
+      }
+      for (const arr of perAdv.values()) {
+        const top = byRecency(arr)[0];
+        if (top && !seen.has(top.id)) { seen.add(top.id); pick.push(top); }
+      }
+      // 2) Llenar el resto del cupo por recencia global.
+      for (const c of byRecency(allCreatives)) {
+        if (pick.length >= Math.max(globalDetailCap, perAdv.size)) break;
+        if (c.id && !seen.has(c.id)) { seen.add(c.id); pick.push(c); }
+      }
+      const ranked = pick;
       await pMap(
         ranked,
         async (c) => {

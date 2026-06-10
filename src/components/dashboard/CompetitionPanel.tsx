@@ -77,19 +77,27 @@ function AdCard({ c }: { c: StoredCreative }) {
   const badge = fmtBadge(c.format);
   const text = c.headline || c.description || '';
   const period = c.firstShown || c.lastShown ? `${c.firstShown || '?'} → ${c.lastShown || '?'}` : '';
-  const showImg = !!c.imageUrl && imgOk;
+  const hasImg = !!c.imageUrl && imgOk;
+  // IMAGE = foto del creativo (rellena con cover). TEXT/VIDEO = preview renderizado (se muestra COMPLETO con contain, sin recortar).
+  const isPhoto = (c.format || '').toUpperCase() === 'IMAGE';
   const card = (
-    <div style={{ width: 190, border: '1px solid #e6eaf0', borderRadius: 12, overflow: 'hidden', background: '#fff', display: 'flex', flexDirection: 'column' }}>
-      {showImg ? (
-        <img src={c.imageUrl as string} alt="" onError={() => setImgOk(false)} style={{ width: '100%', height: 120, objectFit: 'cover', background: '#f4f6f9' }} />
-      ) : (
-        <div style={{ height: 120, background: '#f4f6f9', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px 12px' }}>
-          <span style={{ fontSize: 12, color: '#5b6776', lineHeight: 1.4, textAlign: 'center', maxHeight: 100, overflow: 'hidden' }}>{text || '(creativo sin vista previa)'}</span>
-        </div>
-      )}
+    <div style={{ width: 200, border: '1px solid #e6eaf0', borderRadius: 12, overflow: 'hidden', background: '#fff', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ height: 150, background: '#f4f6f9', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        {hasImg ? (
+          <img
+            src={c.imageUrl as string}
+            alt=""
+            onError={() => setImgOk(false)}
+            style={{ width: '100%', height: '100%', objectFit: isPhoto ? 'cover' : 'contain', objectPosition: 'center', background: '#fff' }}
+          />
+        ) : (
+          <div style={{ padding: 12, textAlign: 'center', maxHeight: 126, overflow: 'hidden' }}>
+            <div style={{ fontSize: 12, color: '#3d4654', lineHeight: 1.45 }}>{text || `Anuncio de ${badge.label.toLowerCase()}`}</div>
+          </div>
+        )}
+      </div>
       <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 5 }}>
         <span style={{ alignSelf: 'flex-start', fontSize: 10, fontWeight: 700, color: badge.fg, background: badge.bg, borderRadius: 6, padding: '2px 7px' }}>{badge.label}</span>
-        {text && showImg && <div style={{ fontSize: 11.5, color: '#3d4654', lineHeight: 1.35, maxHeight: 48, overflow: 'hidden' }}>{text}</div>}
         {period && <div style={{ fontSize: 10, color: '#8a93a1' }}>{period}{c.totalDaysShown ? ` · ${c.totalDaysShown}d` : ''}</div>}
         {c.regions?.length > 0 && <div style={{ fontSize: 10, color: '#8a93a1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.regions.slice(0, 4).join(', ')}{c.regions.length > 4 ? '…' : ''}</div>}
       </div>
@@ -118,15 +126,21 @@ function AdGallery({ ads, hotelName }: { ads: StoredGoogleAds; hotelName?: strin
         Ejemplos reales de lo que pauta cada actor hoy. Clic en un anuncio para verlo en el Centro de Transparencia de Anuncios de Google.
       </p>
       {groups.map(([key, g]) => {
-        const creatives = [...g.creatives].sort((x, y) => (y.lastShown || '').localeCompare(x.lastShown || '')).slice(0, 4);
+        // Solo creativos con algo que mostrar (imagen o copy). Evita tarjetas vacias.
+        const usable = g.creatives.filter((c) => c.imageUrl || c.headline || c.description);
+        const creatives = usable.sort((x, y) => (y.lastShown || '').localeCompare(x.lastShown || '')).slice(0, 4);
         return (
           <div key={key} style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: key === 'self' ? BLUE : INK, marginBottom: 8 }}>
               {g.name}{g.total > 0 && <span style={{ fontWeight: 500, color: '#8a93a1' }}> · {g.total} anuncios activos</span>}
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-              {creatives.map((c, i) => <AdCard key={i} c={c} />)}
-            </div>
+            {creatives.length > 0 ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {creatives.map((c, i) => <AdCard key={i} c={c} />)}
+              </div>
+            ) : (
+              <div style={{ fontSize: 11.5, color: '#8a93a1' }}>Sin vista previa de anuncios disponible este mes.</div>
+            )}
           </div>
         );
       })}
