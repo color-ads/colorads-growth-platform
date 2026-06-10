@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { adsEnabled, fetchGoogleAds } from '@/lib/ads/serpapi';
+import { buildGoogleAdsBlock } from '@/lib/ads/buildAdsBlock';
+import type { AdvertiserMap, GoogleAdsBundle } from '@/lib/ads/types';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -97,14 +100,47 @@ ${internalContext}
 REGLA CRITICA E INVIOLABLE: NUNCA reportes como gap, finding u oportunidad algo que ya figure (explicita o equivalentemente) en esta VERDAD DE BASE, AUNQUE un competidor lo haga. Si un competidor hace algo que el hotel YA hace segun esta lista, es PARIDAD: va en "alsoChecked" en una sola linea, jamas como finding. Ademas, incluí integra esta lista dentro de "ourHotel.alreadyDoing".`
     : '';
 
+  // EVIDENCIA DURA: datos verificados de Google Ads (SerpAPI). Gateado por SERPAPI_KEY.
+  // Sin la key (o sin ad_advertiser_ids), adsBundle queda null -> bloque vacio -> prompt identico al de hoy.
+  // Lectura DEFENSIVA en query aparte: si la columna ad_advertiser_ids aun no existe en Supabase,
+  // Supabase devuelve error sin romper y aaiRaw queda null (cero regresion).
+  let aaiRaw: any = null;
+  if (adsEnabled()) {
+    const { data: aai } = await db.from('properties').select('ad_advertiser_ids').eq('id', prop.id).single();
+    aaiRaw = (aai as any)?.ad_advertiser_ids ?? null;
+  }
+  const advMap: AdvertiserMap = {
+    self: Array.isArray(aaiRaw?.self) ? aaiRaw.self.map((x: unknown) => String(x).trim()).filter(Boolean) : [],
+    competitors:
+      aaiRaw?.competitors && typeof aaiRaw.competitors === 'object'
+        ? Object.fromEntries(
+            Object.entries(aaiRaw.competitors as Record<string, unknown>).map(([k, v]) => [
+              k,
+              Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean) : [],
+            ]),
+          )
+        : {},
+  };
+  const hasAdvIds = advMap.self.length > 0 || Object.keys(advMap.competitors).length > 0;
+
+  let adsBundle: GoogleAdsBundle | null = null;
+  if (adsEnabled() && hasAdvIds) {
+    try {
+      adsBundle = await fetchGoogleAds(advMap, { mode: fast ? 'fast' : 'deep' });
+    } catch {
+      adsBundle = null; // error aislado: el research sigue sin datos de Google Ads
+    }
+  }
+  const googleAdsBlock = buildGoogleAdsBlock(adsBundle);
+
   const prompt = `Sos analista senior de growth y performance marketing para venta directa hotelera. Tu trabajo NO es describir competidores ni rellenar un informe: es encontrar de 1 a 3 HALLAZGOS realmente accionables que el hotel cliente todavia NO esta haciendo y que podrian mover su venta directa. Menos es mejor que rellenar.
 
-HOTEL CLIENTE: ${prop.name}. Sitio oficial: ${OUR_URL}. Esta en El Poblado, Medellin (Colombia). Su segmento objetivo son EXTRANJEROS QUE YA ESTAN EN MEDELLIN o en Colombia (demanda en destino, alta intencion, ventana de decision corta). NUNCA propongas campanas dirigidas al exterior ni a publico que aun no viaja.${baseTruthBlock}
+HOTEL CLIENTE: ${prop.name}. Sitio oficial: ${OUR_URL}. Esta en El Poblado, Medellin (Colombia). Su segmento objetivo son EXTRANJEROS QUE YA ESTAN EN MEDELLIN o en Colombia (demanda en destino, alta intencion, ventana de decision corta). NUNCA propongas campanas dirigidas al exterior ni a publico que aun no viaja.${baseTruthBlock}${googleAdsBlock ? `\n\n${googleAdsBlock}` : ''}
 
 PASO 1 - Entende que YA hace el hotel cliente. Si arriba hay una VERDAD DE BASE, esa lista tiene PRIORIDAD sobre lo que infieras y debe incluirse integra en "ourHotel.alreadyDoing". Complementala visitando su sitio ${OUR_URL} y mirando su presencia publica (Instagram, ficha de Google); suma a "ourHotel.alreadyDoing" lo que YA tiene (motor de reservas, WhatsApp, codigos/promos, idiomas del sitio, packs, blog, redes). CRITICO: si el hotel ya lo hace, NO puede ser un hallazgo.
 
 PASO 2 - Investiga a fondo a los competidores directos: ${competitors.join(', ')}. Haz multiples busquedas especificas. Tenes tiempo para un estudio profundo: SE EXHAUSTIVO, haz varias busquedas cubriendo las distintas lentes y a cada competidor antes de concluir; no te detengas temprano ni te conformes con la primera pagina de resultados. Cubri estas lentes y profundiza donde haya senal real:
-- GOOGLE ADS: busca en el Centro de Transparencia de Anuncios de Google (adstransparency.google.com) y en SERP si cada competidor pauta. Que ofrecen los anuncios, sobre que terminos, a que landing llevan.
+- GOOGLE ADS: si arriba hay una seccion EVIDENCIA DURA, basate en ESA data verificada para Google Ads (no en inferencia web); si tu busqueda web la contradice, prevalece la EVIDENCIA DURA. Complementa buscando en el Centro de Transparencia de Anuncios de Google (adstransparency.google.com) y en SERP si cada competidor pauta. Que ofrecen los anuncios, sobre que terminos, a que landing llevan.
 - META ADS: busca en la Meta Ad Library (facebook.com/ads/library) anuncios activos de cada competidor: angulos, ofertas, si pautan always-on o por rafagas.
 - SEO / SERP: por que terminos rankean (ej "hotel el poblado", "where to stay medellin poblado", su marca), si tienen sitio en ingles, blog/contenido, resultados enriquecidos.
 - OTAs / PORTALES: como aparecen en Booking/Expedia/Hostelworld, paridad de tarifa vs su sitio directo, que incentivo de reserva directa le gana a la OTA, score y resenas.
