@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
 
   const { data: prop, error: perr } = await db
     .from('properties')
-    .select('id, name, competitors')
+    .select('id, name, competitors, internal_context')
     .eq('slug', slug)
     .single();
   if (perr || !prop) {
@@ -77,11 +77,31 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'no competitors configured' }, { status: 400 });
   }
 
+  // VERDAD DE BASE: contexto interno cargado por el equipo. Resiliente a null / vacio / texto / lista / objeto.
+  const icRaw = (prop as any).internal_context;
+  let internalContext = '';
+  if (typeof icRaw === 'string') {
+    internalContext = icRaw.trim();
+  } else if (Array.isArray(icRaw)) {
+    internalContext = icRaw.map((x) => String(x ?? '').trim()).filter(Boolean).map((x) => `- ${x}`).join('\n');
+  } else if (icRaw && typeof icRaw === 'object') {
+    try { internalContext = JSON.stringify(icRaw, null, 2); } catch { internalContext = ''; }
+  }
+
+  const baseTruthBlock = internalContext
+    ? `
+
+VERDAD DE BASE — LO QUE EL HOTEL YA HACE (fuente interna del equipo de ColorADS; tiene MAS autoridad que cualquier inferencia tuya desde la web):
+${internalContext}
+
+REGLA CRITICA E INVIOLABLE: NUNCA reportes como gap, finding u oportunidad algo que ya figure (explicita o equivalentemente) en esta VERDAD DE BASE, AUNQUE un competidor lo haga. Si un competidor hace algo que el hotel YA hace segun esta lista, es PARIDAD: va en "alsoChecked" en una sola linea, jamas como finding. Ademas, incluí integra esta lista dentro de "ourHotel.alreadyDoing".`
+    : '';
+
   const prompt = `Sos analista senior de growth y performance marketing para venta directa hotelera. Tu trabajo NO es describir competidores ni rellenar un informe: es encontrar de 1 a 3 HALLAZGOS realmente accionables que el hotel cliente todavia NO esta haciendo y que podrian mover su venta directa. Menos es mejor que rellenar.
 
-HOTEL CLIENTE: ${prop.name}. Sitio oficial: ${OUR_URL}. Esta en El Poblado, Medellin (Colombia). Su segmento objetivo son EXTRANJEROS QUE YA ESTAN EN MEDELLIN o en Colombia (demanda en destino, alta intencion, ventana de decision corta). NUNCA propongas campanas dirigidas al exterior ni a publico que aun no viaja.
+HOTEL CLIENTE: ${prop.name}. Sitio oficial: ${OUR_URL}. Esta en El Poblado, Medellin (Colombia). Su segmento objetivo son EXTRANJEROS QUE YA ESTAN EN MEDELLIN o en Colombia (demanda en destino, alta intencion, ventana de decision corta). NUNCA propongas campanas dirigidas al exterior ni a publico que aun no viaja.${baseTruthBlock}
 
-PASO 1 - Entende que YA hace el hotel cliente. Visita su sitio ${OUR_URL} y mira su presencia publica (Instagram, ficha de Google). Lista en "ourHotel.alreadyDoing" lo que YA tiene (motor de reservas, WhatsApp, codigos/promos, idiomas del sitio, packs, blog, redes). CRITICO: si el hotel ya lo hace, NO puede ser un hallazgo.
+PASO 1 - Entende que YA hace el hotel cliente. Si arriba hay una VERDAD DE BASE, esa lista tiene PRIORIDAD sobre lo que infieras y debe incluirse integra en "ourHotel.alreadyDoing". Complementala visitando su sitio ${OUR_URL} y mirando su presencia publica (Instagram, ficha de Google); suma a "ourHotel.alreadyDoing" lo que YA tiene (motor de reservas, WhatsApp, codigos/promos, idiomas del sitio, packs, blog, redes). CRITICO: si el hotel ya lo hace, NO puede ser un hallazgo.
 
 PASO 2 - Investiga a fondo a los competidores directos: ${competitors.join(', ')}. Haz multiples busquedas especificas. Tenes tiempo para un estudio profundo: SE EXHAUSTIVO, haz varias busquedas cubriendo las distintas lentes y a cada competidor antes de concluir; no te detengas temprano ni te conformes con la primera pagina de resultados. Cubri estas lentes y profundiza donde haya senal real:
 - GOOGLE ADS: busca en el Centro de Transparencia de Anuncios de Google (adstransparency.google.com) y en SERP si cada competidor pauta. Que ofrecen los anuncios, sobre que terminos, a que landing llevan.
