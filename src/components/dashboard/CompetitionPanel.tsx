@@ -226,8 +226,8 @@ function EntityView({ e, selfHotel }: { e: Entity; selfHotel: HotelSnap | null }
         </div>
       )}
 
-      {/* Análisis de estructura de anuncios */}
-      {e.analysis && ((e.analysis.textAttributes?.length || 0) > 0 || e.analysis.visualNote) && (
+      {/* Análisis de estructura de anuncios — SOLO competidores, nunca el hotel cliente. */}
+      {!e.isSelf && e.analysis && ((e.analysis.textAttributes?.length || 0) > 0 || e.analysis.visualNote) && (
         <div style={{ border: '1px solid #e6eaf0', borderRadius: 12, padding: '14px 16px', marginBottom: 14, background: '#fbfcfd' }}>
           <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: BLUE, marginBottom: 8 }}>Estructura del anuncio — qué rescatar</div>
           {e.analysis.visualNote && (

@@ -168,7 +168,7 @@ REGLAS DE SALIDA:
 - whatTheyDo: 2 a 4 frases concretas sobre el competidor. weDont: 1 a 2 frases que describan, en tono neutral y constructivo, el espacio de mejora del hotel cliente como una oportunidad todavia no aprovechada (NUNCA como deficiencia, error ni en tono critico). opportunity: 1 a 3 frases con una ruta concreta y puntual para mejorar conversion.
 - Se honesto con confidence (alta/media/baja) segun la evidencia.
 - TONO Y PRESENTACION (CRITICO — este informe lo lee el HOTEL CLIENTE en su tablero): presenta cada hallazgo como una RUTA CONCRETA Y ACCIONABLE PARA MEJORAR LA CONVERSION, en tono profesional, neutral y constructivo. PROHIBIDO usar calificativos negativos o alarmistas sobre el hotel cliente: nada de "grave", "derroche", "derrochando", "desperdicio", "desperdiciando", "mal", "error", "problema", "falla", "deficiente", "perdiendo plata", "estas perdiendo". NUNCA describas al hotel cliente como que hace algo mal: enmarca TODO como una oportunidad puntual de optimizacion. Ejemplo: en vez de "tus ads se muestran en 20 paises derrochando presupuesto", escribi "hay una oportunidad puntual de concentrar la pauta en Colombia y mercados emisores clave para mejorar la conversion del trafico en destino". El competidor puede describirse con neutralidad; la critica nunca recae sobre el cliente.
-- ANALISIS DE ESTRUCTURA DE ANUNCIOS ("adAnalysis"): si arriba hay EVIDENCIA DURA de Google Ads, descompone la composicion de los anuncios de cada competidor (incluido el hotel cliente). Para anuncios de TEXTO: SUBRAYA de 3 a 5 atributos de su estructura (Hook, Oferta, CTA, Keywords/Sitelinks, Urgencia, Propuesta de valor), con el "value" EXACTO que usan y un "takeaway" de que puede rescatar el hotel cliente. Para anuncios de IMAGEN o VIDEO: NO analices texto; solo una "visualNote" de 1 frase describiendo la composicion (que se ve: ambiente, producto, gente, vista). Un objeto por competidor que tenga anuncios.
+- ANALISIS DE ESTRUCTURA DE ANUNCIOS ("adAnalysis"): si arriba hay EVIDENCIA DURA de Google Ads, descompone la composicion de los anuncios SOLO DE LOS COMPETIDORES. NUNCA analices ni incluyas al hotel cliente (${prop.name}) en "adAnalysis": el objetivo es explorar a la competencia, no exponer al cliente. Para anuncios de TEXTO del competidor: SUBRAYA de 3 a 5 atributos de su estructura (Hook, Oferta, CTA, Keywords/Sitelinks, Urgencia, Propuesta de valor), con el "value" EXACTO que usan y un "takeaway" de que puede rescatar el hotel cliente. Para anuncios de IMAGEN o VIDEO del competidor: NO analices texto; solo una "visualNote" de 1 frase describiendo la composicion (que se ve: ambiente, producto, gente, vista). Un objeto por COMPETIDOR (jamas el hotel cliente).
 
 Responde UNICAMENTE con JSON valido, sin markdown, sin texto antes ni despues:
 {
@@ -189,7 +189,7 @@ Responde UNICAMENTE con JSON valido, sin markdown, sin texto antes ni despues:
   "diggingNote": "si se encontro poco, donde profundizar el proximo mes",
   "adAnalysis": [
     {
-      "competitor": "nombre del competidor (o el hotel cliente)",
+      "competitor": "nombre del COMPETIDOR (NUNCA el hotel cliente)",
       "textAttributes": [
         { "attribute": "Hook | Oferta | CTA | Keywords/Sitelinks | Urgencia | Propuesta de valor", "value": "el texto exacto que usan", "takeaway": "que puede rescatar el hotel cliente" }
       ],
