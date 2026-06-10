@@ -46,25 +46,26 @@ function num(x: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-async function fetchOneHotel(label: string, query: string, signal: AbortSignal): Promise<HotelSnapshot | null> {
-  const cacheKey = query.toLowerCase();
-  const hit = hotelCache.get(cacheKey);
-  if (hit && hit.expires > Date.now()) return hit.data ? { ...hit.data, label } : null;
+// google_hotels trata `q` como destino, no como propiedad: hay que buscar `${nombre} ${sub-zona}`
+// y encontrar el match DENTRO de los resultados. La sub-zona que funciona varia por hotel
+// (ej. Binn solo aparece con "Provenza"), asi que probamos varias hasta dar con el match.
+const AREA_VARIANTS = ['El Poblado Medellin', 'Provenza Medellin', 'Medellin Colombia'];
 
-  const { check_in_date, check_out_date } = futureDates();
-  const j = await serp(
-    { engine: 'google_hotels', q: query, check_in_date, check_out_date, currency: 'USD', gl: 'co', hl: 'es' },
-    signal,
-  );
-  const props: any[] = Array.isArray(j.properties) ? j.properties : [];
-  const p = props[0];
-  if (!p) { hotelCache.set(cacheKey, { data: null, expires: Date.now() + CACHE_TTL_MS }); return null; }
+function normHotel(s: string) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/\bhotel\b|\bhostel\b|\bby .*/g, '').replace(/[^a-z0-9]/g, '').trim();
+}
+function nameMatches(a: string, b: string) {
+  const na = normHotel(a), nb = normHotel(b);
+  return !!na && !!nb && (na.includes(nb) || nb.includes(na));
+}
 
+function toSnapshot(label: string, p: any): HotelSnapshot {
   const rate = p.rate_per_night || {};
   const ratePerNight = num(rate.extracted_lowest) ?? (parseInt(String(rate.lowest || '').replace(/[^0-9]/g, ''), 10) || null);
-  const snap: HotelSnapshot = {
+  return {
     label,
-    name: String(p.name || query),
+    name: String(p.name || ''),
     ratePerNight,
     currency: 'USD',
     rating: num(p.overall_rating),
@@ -74,8 +75,29 @@ async function fetchOneHotel(label: string, query: string, signal: AbortSignal):
     image: Array.isArray(p.images) && p.images[0] ? String(p.images[0].thumbnail || p.images[0].original_image || '') || null : null,
     link: p.link ? String(p.link) : null,
   };
-  hotelCache.set(cacheKey, { data: snap, expires: Date.now() + CACHE_TTL_MS });
-  return snap;
+}
+
+async function fetchOneHotel(label: string, name: string, signal: AbortSignal): Promise<HotelSnapshot | null> {
+  const cacheKey = normHotel(name);
+  const hit = hotelCache.get(cacheKey);
+  if (hit && hit.expires > Date.now()) return hit.data ? { ...hit.data, label } : null;
+
+  const { check_in_date, check_out_date } = futureDates();
+  for (const area of AREA_VARIANTS) {
+    const j = await serp(
+      { engine: 'google_hotels', q: `${name} ${area}`, check_in_date, check_out_date, currency: 'USD', gl: 'co', hl: 'es' },
+      signal,
+    );
+    const props: any[] = Array.isArray(j.properties) ? j.properties : [];
+    const match = props.find((p) => nameMatches(name, String(p.name || '')));
+    if (match) {
+      const snap = toSnapshot(label, match);
+      hotelCache.set(cacheKey, { data: snap, expires: Date.now() + CACHE_TTL_MS });
+      return snap;
+    }
+  }
+  hotelCache.set(cacheKey, { data: null, expires: Date.now() + CACHE_TTL_MS });
+  return null;
 }
 
 /** Devuelve snapshots para self + competidores. null si no hay SERPAPI_KEY. */
@@ -84,15 +106,15 @@ export async function fetchHotelSnapshots(
   opts: { timeBudgetMs?: number } = {},
 ): Promise<HotelSnapshot[] | null> {
   if (!process.env.SERPAPI_KEY) return null;
-  const queries: { label: string; query: string }[] = [];
-  if (input.self) queries.push({ label: 'self', query: `${input.self} Medellin` });
-  for (const c of input.competitors) if (c) queries.push({ label: c, query: `${c} Medellin` });
-  if (!queries.length) return null;
+  const items: { label: string; name: string }[] = [];
+  if (input.self) items.push({ label: 'self', name: input.self });
+  for (const c of input.competitors) if (c) items.push({ label: c, name: c });
+  if (!items.length) return null;
 
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), opts.timeBudgetMs ?? 40000);
+  const timer = setTimeout(() => ctrl.abort(), opts.timeBudgetMs ?? 55000);
   try {
-    const res = await pMap(queries, (q) => fetchOneHotel(q.label, q.query, ctrl.signal), 3);
+    const res = await pMap(items, (it) => fetchOneHotel(it.label, it.name, ctrl.signal), 3);
     const out = res.filter(Boolean) as HotelSnapshot[];
     return out.length ? out : null;
   } finally {

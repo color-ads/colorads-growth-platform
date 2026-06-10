@@ -142,7 +142,7 @@ export async function fetchGoogleAds(map: AdvertiserMap, opts: { mode: 'fast' | 
 
   const mode = opts.mode;
   const perAdvertiserList = 5;
-  const globalDetailCap = mode === 'deep' ? 10 : 0; // fast = SIN detalles
+  const globalDetailCap = mode === 'deep' ? 14 : 0; // fast = SIN detalles. Deep: mas detalles = mas thumbnails de video + copy.
   const concurrency = 3;
   const timeBudgetMs = mode === 'deep' ? 90_000 : 20_000;
 

@@ -138,7 +138,7 @@ REGLA CRITICA E INVIOLABLE: NUNCA reportes como gap, finding u oportunidad algo 
   let hotelSnaps: HotelSnapshot[] | null = null;
   if (adsEnabled() && !fast && competitors.length) {
     try {
-      hotelSnaps = await fetchHotelSnapshots({ self: prop.name, competitors }, { timeBudgetMs: 40000 });
+      hotelSnaps = await fetchHotelSnapshots({ self: prop.name, competitors }, { timeBudgetMs: 55000 });
     } catch {
       hotelSnaps = null;
     }
