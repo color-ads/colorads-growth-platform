@@ -126,6 +126,8 @@ async function fetchDetail(
     if (!content.visibleLink && c.visible_link) content.visibleLink = String(c.visible_link);
     if (!content.landingPageUrl && c.link) content.landingPageUrl = String(c.link);
     if (!content.imageUrl && c.image) content.imageUrl = String(c.image);
+    // Video ads: usar el thumbnail de YouTube como vista previa (los image ads no traen thumbnail).
+    if (!content.imageUrl && c.thumbnail) content.imageUrl = String(c.thumbnail);
     if (!content.videoUrl && c.video_link) content.videoUrl = String(c.video_link);
   }
   return { regions, content };

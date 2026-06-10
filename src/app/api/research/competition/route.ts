@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { adsEnabled, fetchGoogleAds } from '@/lib/ads/serpapi';
 import { buildGoogleAdsBlock, toStoredGoogleAds } from '@/lib/ads/buildAdsBlock';
-import type { AdvertiserMap, GoogleAdsBundle } from '@/lib/ads/types';
+import { fetchHotelSnapshots, buildHotelBlock } from '@/lib/ads/hotels';
+import type { AdvertiserMap, GoogleAdsBundle, HotelSnapshot } from '@/lib/ads/types';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -133,9 +134,20 @@ REGLA CRITICA E INVIOLABLE: NUNCA reportes como gap, finding u oportunidad algo 
   }
   const googleAdsBlock = buildGoogleAdsBlock(adsBundle);
 
+  // EVIDENCIA DURA: tarifas/posicionamiento (Google Hotels). Gateado por SERPAPI_KEY. fast no lo trae (barato).
+  let hotelSnaps: HotelSnapshot[] | null = null;
+  if (adsEnabled() && !fast && competitors.length) {
+    try {
+      hotelSnaps = await fetchHotelSnapshots({ self: prop.name, competitors }, { timeBudgetMs: 40000 });
+    } catch {
+      hotelSnaps = null;
+    }
+  }
+  const hotelBlock = buildHotelBlock(hotelSnaps);
+
   const prompt = `Sos analista senior de growth y performance marketing para venta directa hotelera. Tu trabajo NO es describir competidores ni rellenar un informe: es encontrar de 1 a 3 HALLAZGOS realmente accionables que el hotel cliente todavia NO esta haciendo y que podrian mover su venta directa. Menos es mejor que rellenar.
 
-HOTEL CLIENTE: ${prop.name}. Sitio oficial: ${OUR_URL}. Esta en El Poblado, Medellin (Colombia). Su segmento objetivo son EXTRANJEROS QUE YA ESTAN EN MEDELLIN o en Colombia (demanda en destino, alta intencion, ventana de decision corta). NUNCA propongas campanas dirigidas al exterior ni a publico que aun no viaja.${baseTruthBlock}${googleAdsBlock ? `\n\n${googleAdsBlock}` : ''}
+HOTEL CLIENTE: ${prop.name}. Sitio oficial: ${OUR_URL}. Esta en El Poblado, Medellin (Colombia). Su segmento objetivo son EXTRANJEROS QUE YA ESTAN EN MEDELLIN o en Colombia (demanda en destino, alta intencion, ventana de decision corta). NUNCA propongas campanas dirigidas al exterior ni a publico que aun no viaja.${baseTruthBlock}${googleAdsBlock ? `\n\n${googleAdsBlock}` : ''}${hotelBlock ? `\n\n${hotelBlock}` : ''}
 
 PASO 1 - Entende que YA hace el hotel cliente. Si arriba hay una VERDAD DE BASE, esa lista tiene PRIORIDAD sobre lo que infieras y debe incluirse integra en "ourHotel.alreadyDoing". Complementala visitando su sitio ${OUR_URL} y mirando su presencia publica (Instagram, ficha de Google); suma a "ourHotel.alreadyDoing" lo que YA tiene (motor de reservas, WhatsApp, codigos/promos, idiomas del sitio, packs, blog, redes). CRITICO: si el hotel ya lo hace, NO puede ser un hallazgo.
 
@@ -156,6 +168,7 @@ REGLAS DE SALIDA:
 - whatTheyDo: 2 a 4 frases concretas sobre el competidor. weDont: 1 a 2 frases que describan, en tono neutral y constructivo, el espacio de mejora del hotel cliente como una oportunidad todavia no aprovechada (NUNCA como deficiencia, error ni en tono critico). opportunity: 1 a 3 frases con una ruta concreta y puntual para mejorar conversion.
 - Se honesto con confidence (alta/media/baja) segun la evidencia.
 - TONO Y PRESENTACION (CRITICO — este informe lo lee el HOTEL CLIENTE en su tablero): presenta cada hallazgo como una RUTA CONCRETA Y ACCIONABLE PARA MEJORAR LA CONVERSION, en tono profesional, neutral y constructivo. PROHIBIDO usar calificativos negativos o alarmistas sobre el hotel cliente: nada de "grave", "derroche", "derrochando", "desperdicio", "desperdiciando", "mal", "error", "problema", "falla", "deficiente", "perdiendo plata", "estas perdiendo". NUNCA describas al hotel cliente como que hace algo mal: enmarca TODO como una oportunidad puntual de optimizacion. Ejemplo: en vez de "tus ads se muestran en 20 paises derrochando presupuesto", escribi "hay una oportunidad puntual de concentrar la pauta en Colombia y mercados emisores clave para mejorar la conversion del trafico en destino". El competidor puede describirse con neutralidad; la critica nunca recae sobre el cliente.
+- ANALISIS DE ESTRUCTURA DE ANUNCIOS ("adAnalysis"): si arriba hay EVIDENCIA DURA de Google Ads, descompone la composicion de los anuncios de cada competidor (incluido el hotel cliente). Para anuncios de TEXTO: SUBRAYA de 3 a 5 atributos de su estructura (Hook, Oferta, CTA, Keywords/Sitelinks, Urgencia, Propuesta de valor), con el "value" EXACTO que usan y un "takeaway" de que puede rescatar el hotel cliente. Para anuncios de IMAGEN o VIDEO: NO analices texto; solo una "visualNote" de 1 frase describiendo la composicion (que se ve: ambiente, producto, gente, vista). Un objeto por competidor que tenga anuncios.
 
 Responde UNICAMENTE con JSON valido, sin markdown, sin texto antes ni despues:
 {
@@ -173,7 +186,16 @@ Responde UNICAMENTE con JSON valido, sin markdown, sin texto antes ni despues:
     }
   ],
   "alsoChecked": ["cosa revisada que ya hacemos o no aporta, en 1 linea"],
-  "diggingNote": "si se encontro poco, donde profundizar el proximo mes"
+  "diggingNote": "si se encontro poco, donde profundizar el proximo mes",
+  "adAnalysis": [
+    {
+      "competitor": "nombre del competidor (o el hotel cliente)",
+      "textAttributes": [
+        { "attribute": "Hook | Oferta | CTA | Keywords/Sitelinks | Urgencia | Propuesta de valor", "value": "el texto exacto que usan", "takeaway": "que puede rescatar el hotel cliente" }
+      ],
+      "visualNote": "para imagen/video: 1 frase de composicion (que se ve). Vacio si solo hay texto."
+    }
+  ]
 }
 
 Todo en espanol. Devolve SOLO el JSON.`;
@@ -192,7 +214,7 @@ Todo en espanol. Devolve SOLO el JSON.`;
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 8000,
+        max_tokens: 12000,
         tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: fast ? 4 : 10 }],
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -218,6 +240,7 @@ Todo en espanol. Devolve SOLO el JSON.`;
   if (!Array.isArray(data.ourHotel.alreadyDoing)) data.ourHotel.alreadyDoing = [];
   data.findings = Array.isArray(data.findings) ? data.findings.slice(0, 3) : [];
   data.alsoChecked = Array.isArray(data.alsoChecked) ? data.alsoChecked : [];
+  data.adAnalysis = Array.isArray(data.adAnalysis) ? data.adAnalysis : [];
 
   const urls = new Set<string>();
   for (const f of data.findings) {
@@ -233,6 +256,8 @@ Todo en espanol. Devolve SOLO el JSON.`;
   data.generatedAt = new Date().toISOString();
   // Adjuntar creatividades verificadas de Google Ads (para mostrar ejemplos/imagenes en el tablero).
   data.googleAds = toStoredGoogleAds(adsBundle);
+  // Adjuntar tarifas/posicionamiento verificados (Google Hotels).
+  data.hotelSnapshot = hotelSnaps || [];
   const kbText = buildKbText(data);
 
   const upd = await db.from('properties').update({ ai_competition_data: data, ai_competition_kb: kbText }).eq('id', prop.id);

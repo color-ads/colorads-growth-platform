@@ -47,3 +47,17 @@ export interface GoogleAdsBundle {
   mode: 'fast' | 'deep';
   detailsFetched: number; // cuantos detalles se trajeron efectivamente
 }
+
+/** Snapshot de tarifa/posicionamiento desde Google Hotels (SerpAPI engine google_hotels). */
+export interface HotelSnapshot {
+  label: string; // 'self' o nombre del competidor (como se configuro)
+  name: string; // nombre del hotel segun Google
+  ratePerNight: number | null;
+  currency: string | null;
+  rating: number | null;
+  reviews: number | null;
+  hotelClass: string | null;
+  amenities: string[];
+  image: string | null;
+  link: string | null;
+}
