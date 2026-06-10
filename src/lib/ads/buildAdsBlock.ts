@@ -54,7 +54,7 @@ export function buildGoogleAdsBlock(bundle: GoogleAdsBundle | null): string {
       L.push('');
       L.push(`REGIONES DONDE SE MUESTRAN LOS ADS DEL HOTEL CLIENTE: ${[...regions].join(', ')}.`);
       L.push(
-        'Nota estrategica: el hotel apunta a EXTRANJEROS YA EN DESTINO (Colombia). Si sus ads se muestran en muchos paises fuera de Colombia, puede ser gasto desalineado con la estrategia; evaluá si amerita un finding o una correccion.',
+        'Nota estrategica (enmarcala SIEMPRE como oportunidad de mejora de conversion, en tono neutral y constructivo, nunca como error o derroche del cliente): el hotel apunta a EXTRANJEROS YA EN DESTINO (Colombia). Si sus ads se muestran en muchos paises ademas de Colombia, hay una oportunidad puntual de concentrar la pauta en Colombia y en los mercados emisores con mas viajeros actualmente en destino, para mejorar la conversion del trafico de alta intencion.',
       );
     }
     L.push('');

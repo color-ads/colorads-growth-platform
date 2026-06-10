@@ -153,20 +153,21 @@ PASO 3 - Filtra sin piedad. Para que algo sea finding tiene que cumplir TODO: (a
 REGLAS DE SALIDA:
 - Maximo 3 findings. Si solo 1 vale la pena, devolve 1. Si casi no hay nada, devolve 0 o 1 y usa "diggingNote" para decir DONDE meter el dedo el proximo mes (que fuente o competidor revisar mas a fondo).
 - Cada finding ESPECIFICO y con EVIDENCIA: nombra al competidor, la tactica exacta, que viste, y de 1 a 3 URLs de respaldo que REALMENTE aparecieron en tus busquedas. NO inventes ni construyas URLs de memoria; solo links que viste; prefiere dominios oficiales.
-- whatTheyDo: 2 a 4 frases concretas. weDont: 1 a 2 frases especificas al hotel cliente. opportunity: 1 a 3 frases, algo concreto para probar.
+- whatTheyDo: 2 a 4 frases concretas sobre el competidor. weDont: 1 a 2 frases que describan, en tono neutral y constructivo, el espacio de mejora del hotel cliente como una oportunidad todavia no aprovechada (NUNCA como deficiencia, error ni en tono critico). opportunity: 1 a 3 frases con una ruta concreta y puntual para mejorar conversion.
 - Se honesto con confidence (alta/media/baja) segun la evidencia.
+- TONO Y PRESENTACION (CRITICO — este informe lo lee el HOTEL CLIENTE en su tablero): presenta cada hallazgo como una RUTA CONCRETA Y ACCIONABLE PARA MEJORAR LA CONVERSION, en tono profesional, neutral y constructivo. PROHIBIDO usar calificativos negativos o alarmistas sobre el hotel cliente: nada de "grave", "derroche", "derrochando", "desperdicio", "desperdiciando", "mal", "error", "problema", "falla", "deficiente", "perdiendo plata", "estas perdiendo". NUNCA describas al hotel cliente como que hace algo mal: enmarca TODO como una oportunidad puntual de optimizacion. Ejemplo: en vez de "tus ads se muestran en 20 paises derrochando presupuesto", escribi "hay una oportunidad puntual de concentrar la pauta en Colombia y mercados emisores clave para mejorar la conversion del trafico en destino". El competidor puede describirse con neutralidad; la critica nunca recae sobre el cliente.
 
 Responde UNICAMENTE con JSON valido, sin markdown, sin texto antes ni despues:
 {
   "ourHotel": { "name": "${prop.name}", "url": "${OUR_URL}", "alreadyDoing": ["...", "..."] },
   "findings": [
     {
-      "title": "hallazgo concreto en una linea",
+      "title": "ruta concreta de mejora en una linea, en tono neutral y constructivo (sin calificativos negativos sobre el hotel cliente)",
       "competitor": "quien lo hace",
       "category": "Google Ads | Meta Ads | SEO | OTAs | Funnel directo | Contenido",
-      "whatTheyDo": "2 a 4 frases con detalle y lo que viste",
-      "weDont": "1 a 2 frases: el gap especifico del hotel cliente",
-      "opportunity": "1 a 3 frases: que probar y por que encaja con el extranjero ya en destino",
+      "whatTheyDo": "2 a 4 frases con detalle y lo que viste del competidor",
+      "weDont": "1 a 2 frases: el espacio de mejora del hotel cliente enmarcado como oportunidad, en tono neutral (nunca como deficiencia ni critica)",
+      "opportunity": "1 a 3 frases: la ruta puntual para mejorar conversion y por que encaja con el extranjero ya en destino",
       "evidence": [ { "label": "que es", "url": "https://..." } ],
       "confidence": "alta|media|baja"
     }
