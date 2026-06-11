@@ -312,7 +312,6 @@ export function AudiencePanel({ property, year, month, periodLabel, canGenerate 
             </div>
           )}
           <Insight text={an.whoBuys} />
-          {an.loyaltyInsight && <Insight text={an.loyaltyInsight} />}
         </Section>
       )}
 
