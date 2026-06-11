@@ -355,17 +355,9 @@ export function AudiencePanel({ property, year, month, periodLabel, canGenerate 
         </Section>
       )}
 
-      {/* 5. LANDING PAGES */}
-      {(g.engineLandingPages?.length || 0) > 0 && (
-        <Section title="5 · Puertas de entrada al motor" sub="Qué páginas abren el motor de reservas — dónde una mejora de UX tiene más apalancamiento.">
-          <Distro rows={g.engineLandingPages!.slice(0, 6).map((r) => ({ label: r.label, value: r.value }))} total={g.engineLandingPages!.reduce((s, r) => s + r.value, 0)} color={BLUE} />
-          <Insight text={an.landingInsight} />
-        </Section>
-      )}
-
-      {/* 6. PAUTA GOOGLE ADS */}
+      {/* 5. PAUTA GOOGLE ADS */}
       {totals && totals.clicks > 0 && (
-        <Section title="6 · La pauta que alimenta la demanda (Google Ads)" sub="Eficiencia de la inversión en lenguaje de negocio.">
+        <Section title="5 · La pauta que alimenta la demanda (Google Ads)" sub="Eficiencia de la inversión en lenguaje de negocio.">
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
             <KpiCard label="Impresiones" value={fmt(totals.impressions)} />
             <KpiCard label="Clics" value={fmt(totals.clicks)} sub={`CTR ${(totals.ctr * 100).toFixed(1)}%`} />
@@ -390,7 +382,7 @@ export function AudiencePanel({ property, year, month, periodLabel, canGenerate 
 
       {/* 7. OPORTUNIDAD (alineación demanda↔inversión, cliente-facing positivo) */}
       {(an.opportunityInsight || (g.bookingsByCountry?.length || 0) > 0) && (
-        <Section title="7 · Mercados de oportunidad" sub="Dónde están las reservas reales vs dónde llega hoy la pauta — para enfocar el crecimiento.">
+        <Section title="6 · Mercados de oportunidad" sub="Dónde están las reservas reales vs dónde llega hoy la pauta — para enfocar el crecimiento.">
           {(g.bookingsByCountry?.length || 0) > 0 && adClicks > 0 && (
             <div style={{ border: '1px solid #e6eaf0', borderRadius: 10, overflow: 'hidden' }}>
               <div style={{ display: 'flex', padding: '7px 14px', background: '#f6f8fa', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3, color: '#8a93a1' }}>
@@ -417,7 +409,7 @@ export function AudiencePanel({ property, year, month, periodLabel, canGenerate 
 
       {/* 8. CONCLUSIONES / PLAN */}
       {(an.insights?.length || 0) > 0 && (
-        <Section title="8 · Conclusiones y plan de acción">
+        <Section title="7 · Conclusiones y plan de acción">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
             {an.insights!.map((ins, i) => (
               <div key={i} style={{ border: '1px solid #e6eaf0', borderRadius: 12, padding: '14px 16px', background: '#fff' }}>
