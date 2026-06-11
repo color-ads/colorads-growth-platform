@@ -17,7 +17,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { exec } from 'node:child_process';
-import { readFileSync, appendFileSync } from 'node:fs';
+import { readFileSync, appendFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -25,7 +25,8 @@ const ENV_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '
 
 const PORT = 4444;
 const REDIRECT_URI = `http://localhost:${PORT}`;
-const SCOPE = 'https://www.googleapis.com/auth/adwords';
+// Ambos scopes en un solo token: Google Ads + Google Analytics (GA4 Data API).
+const SCOPE = 'https://www.googleapis.com/auth/adwords https://www.googleapis.com/auth/analytics.readonly';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
@@ -99,8 +100,14 @@ const server = http.createServer(async (req, res) => {
     if (tok.refresh_token) {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       res.end('<h2>✅ Listo. Ya podés cerrar esta pestaña y volver a Claude.</h2>');
-      appendFileSync(ENV_PATH, `\nGOOGLE_ADS_REFRESH_TOKEN=${tok.refresh_token}\n`);
-      console.log('\n✅ REFRESH_TOKEN_OK — guardado en .env.local (no se muestra por seguridad).\n');
+      const line = `GOOGLE_ADS_REFRESH_TOKEN=${tok.refresh_token}`;
+      let txt = ''; try { txt = readFileSync(ENV_PATH, 'utf8'); } catch {}
+      if (/^GOOGLE_ADS_REFRESH_TOKEN=.*$/m.test(txt)) {
+        writeFileSync(ENV_PATH, txt.replace(/^GOOGLE_ADS_REFRESH_TOKEN=.*$/m, line));
+      } else {
+        appendFileSync(ENV_PATH, `\n${line}\n`);
+      }
+      console.log('\n✅ REFRESH_TOKEN_OK — guardado/actualizado en .env.local (no se muestra por seguridad).\n');
     } else {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       res.end('<h2>⚠️ No vino refresh_token.</h2><p>Revisá la terminal.</p>');

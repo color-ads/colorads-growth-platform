@@ -6,9 +6,11 @@ import type { Property } from '@/types';
 type Row = { label: string; impressions: number; clicks: number; conversions: number; cost?: number };
 type SearchTerm = { term: string; impressions: number; clicks: number; conversions: number };
 type Audience = { devices: Row[]; ageRanges: Row[]; genders: Row[]; geo: Row[]; searchTerms: SearchTerm[]; range?: { since: string; until: string } };
+type GA4Channel = { label: string; sessions: number; engineVisits: number; bookings: number };
+type GA4 = { channels?: GA4Channel[]; totalEngineVisits?: number; totalBookings?: number; totalPurchases?: number };
 type Insight = { title?: string; finding?: string; action?: string; impact?: string };
-type Analysis = { headline?: string; whoConverts?: string; insights?: Insight[]; searchRead?: string };
-type Payload = { audience?: Audience; analysis?: Analysis | null; generatedAt?: string };
+type Analysis = { headline?: string; whoConverts?: string; insights?: Insight[]; searchRead?: string; channelMix?: string; trackingNote?: string };
+type Payload = { audience?: Audience; ga4?: GA4 | null; analysis?: Analysis | null; generatedAt?: string };
 
 const INK = '#1d3557';
 const BLUE = '#457B9D';
@@ -155,9 +157,46 @@ export function AudiencePanel({ property, year, month, periodLabel, canGenerate 
         </div>
       )}
 
+      {/* GA4: intención (visitas al motor) por canal — confiable; revela canales que Google Ads no ve. */}
+      {(payload.ga4?.channels?.length || 0) > 0 && (
+        <Section title="Intención por canal — visitas al motor de reservas (Analytics)">
+          <div style={{ fontSize: 11.5, color: '#5b6776', background: '#f6f9fb', borderRadius: 8, padding: '8px 12px', marginBottom: 10, lineHeight: 1.45 }}>
+            <strong>Visitas al motor</strong> = intención de compra (abrir el motor). GA4 ve canales que Google Ads no atribuye —sobre todo Meta/Instagram, orgánico y directo.
+          </div>
+          {an.channelMix && <div style={{ fontSize: 12.5, color: '#3d4654', lineHeight: 1.5, marginBottom: 10, background: '#fff', border: '1px solid #e6eaf0', borderRadius: 8, padding: '8px 12px' }}><strong style={{ color: BLUE }}>Lectura:</strong> {an.channelMix}</div>}
+          <div style={{ border: '1px solid #e6eaf0', borderRadius: 10, overflow: 'hidden' }}>
+            {payload.ga4!.channels!.filter((c) => c.engineVisits > 0).map((c, i) => {
+              const l = c.label.toLowerCase();
+              const isAds = l.includes('google / cpc') || l.includes('google/cpc');
+              const isMeta = l.startsWith('ig') || l.includes('facebook') || l.startsWith('fb');
+              const tag = isAds ? { t: 'Google Ads', c: '#457B9D' } : isMeta ? { t: 'Meta · no visible en Ads', c: '#6b4ea0' } : { t: 'Orgánico/Directo · no visible en Ads', c: '#1b7a44' };
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderTop: i === 0 ? 'none' : '1px solid #eef1f5' }}>
+                  <span style={{ flex: 1, fontSize: 12.5, color: INK, fontWeight: 600, minWidth: 0 }}>
+                    {c.label}{' '}
+                    <span style={{ fontSize: 9.5, fontWeight: 700, color: tag.c, background: '#f4f6f9', borderRadius: 999, padding: '1px 7px', whiteSpace: 'nowrap' }}>{tag.t}</span>
+                  </span>
+                  <span style={{ flexShrink: 0, fontSize: 13, color: BLUE, fontWeight: 700, width: 96, textAlign: 'right' }}>{c.engineVisits.toLocaleString('es-CO')} al motor</span>
+                </div>
+              );
+            })}
+          </div>
+          {/* Reservas directas: total confiable, pero atribución por canal pendiente de cross-domain */}
+          {typeof payload.ga4!.totalBookings === 'number' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, background: '#f3faf5', border: '1px solid #d6ebdd', borderRadius: 10, padding: '12px 16px' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>Reservas directas del sitio (GA4): <span style={{ color: GREEN }}>{payload.ga4!.totalBookings}</span></div>
+                <div style={{ fontSize: 11, color: '#8a93a1', marginTop: 2, lineHeight: 1.4 }}>Total del mes (evento de confirmación). La atribución por canal aún no es precisa por falta de configuración cross-domain. No incluye OTAs (Booking/Expedia), que están en Cloudbeds.</div>
+              </div>
+            </div>
+          )}
+          {an.trackingNote && <div style={{ fontSize: 11.5, color: '#8a93a1', marginTop: 8, lineHeight: 1.45 }}>💡 {an.trackingNote}</div>}
+        </Section>
+      )}
+
       {/* Geo: convierte vs no convierte */}
       {(a.geo?.length || 0) > 0 && (
-        <Section title="Por país — dónde se concentran las conversiones">
+        <Section title="Por país — dónde se concentran las conversiones (Google Ads)">
           <div style={{ border: '1px solid #e6eaf0', borderRadius: 10, overflow: 'hidden' }}>
             {a.geo.map((g, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 14px', borderTop: i === 0 ? 'none' : '1px solid #eef1f5', background: g.conversions > 0 ? '#f3faf5' : '#fff' }}>

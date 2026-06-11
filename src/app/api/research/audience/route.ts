@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { fetchGoogleAdsAudience, googleAdsEnabled } from '@/lib/ads/googleAds';
+import { fetchGA4Audience } from '@/lib/ads/ga4';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -60,10 +61,22 @@ export async function POST(req: NextRequest) {
   }
   if (!audience) return NextResponse.json({ ok: false, error: 'sin datos de audiencia' }, { status: 200 });
 
-  const prompt = `Sos un growth strategist senior de marketing hotelero. Te paso la AUDIENCIA REAL de Google Ads del hotel cliente (mes ${since} a ${until}). Tu trabajo: convertir esto en un analisis demografico de ALTO VALOR para el cliente, con insights CONCRETOS y RAPIDAMENTE ACCIONABLES.
+  // GA4: conversiones reales de TODOS los canales (incluye Meta/orgánico/directo que Google Ads no ve).
+  let ga4 = null;
+  try {
+    ga4 = await fetchGA4Audience({ since, until });
+  } catch { ga4 = null; }
 
-DATOS REALES (no inventes nada fuera de esto):
+  const prompt = `Sos un growth strategist senior de marketing hotelero. Te paso dos fuentes REALES del hotel cliente (mes ${since} a ${until}): (1) audiencia de GOOGLE ADS (su tracking interno de pauta) y (2) conversiones de GOOGLE ANALYTICS 4 (todos los canales del sitio). Tu trabajo: cruzarlas en un analisis de ALTO VALOR, con insights CONCRETOS y RAPIDAMENTE ACCIONABLES.
+
+DATOS GOOGLE ADS (audiencia de la pauta; su conversion interna suele SUBcontar):
 ${JSON.stringify(audience, null, 2)}
+
+DATOS GOOGLE ANALYTICS 4 — embudo por canal:
+${ga4 ? JSON.stringify(ga4, null, 2) : 'no disponible'}
+SEMANTICA (respetala con precision, NO la confundas): "engineVisits" por canal = VISITAS AL MOTOR (INTENCION de compra) = DATO CONFIABLE por canal. "totalBookings" = reservas directas reales del mes (evento "reservas" en la pagina de confirmacion) = DATO CONFIABLE pero SOLO como TOTAL. La atribucion de "bookings" POR CANAL NO es confiable hoy: por falta de configuracion cross-domain, muchas reservas se atribuyen a los dominios del motor/pago (pms.visitoai.com, zola.com), por eso un canal con mucha intencion (ej. Meta 'ig / paid') puede figurar con 0 reservas, lo cual es FALSO. "totalPurchases" (ecommerce) esta casi en 0 = mal implementado.
+
+CRUCE (lo mas valioso, SIN engañar): (a) usá engineVisits por canal (CONFIABLE) para mostrar que canales generan mas INTENCION, destacando los que Google Ads NO ve: Meta/Instagram, organico, directo. (b) Reportá el TOTAL de reservas directas (totalBookings) como numero del mes, pero NO lo dividas por canal ni concluyas que un canal "no convierte" basandote en bookings por canal (la atribucion esta distorsionada). NUNCA digas que Meta tiene 0 reservas. (c) Como accionable de ALTO impacto: recomenda arreglar el tracking cross-domain + ecommerce de GA4 para poder atribuir las reservas por canal con precision. Tono: oportunidades, nunca calificativos negativos.
 
 REGLAS DE TONO (CRITICO — lo lee el hotel cliente):
 - Profesional, neutral y CONSTRUCTIVO. NUNCA uses calificativos negativos sobre el cliente (grave, derroche, mal, error, problema, falla, perdida, quemando). Todo gap se enmarca como OPORTUNIDAD puntual de mejorar conversion.
@@ -77,7 +90,9 @@ Responde UNICAMENTE con JSON valido, sin markdown:
   "insights": [
     { "title": "titulo corto", "finding": "el dato concreto que lo sustenta", "action": "que hacer ya, especifico", "impact": "alto|medio|bajo" }
   ],
-  "searchRead": "1 frase sobre los terminos de busqueda (marca vs generico vs competidor) y que implica"
+  "searchRead": "1 frase sobre los terminos de busqueda (marca vs generico vs competidor) y que implica",
+  "channelMix": "1 a 2 frases: que canales generan mas INTENCION (visitas al motor) segun GA4, destacando los que Google Ads no ve (Meta/Instagram, organico, directo). NO atribuyas reservas por canal aca.",
+  "trackingNote": "1 frase: oportunidad de configurar cross-domain + ecommerce en GA4 para atribuir las reservas directas por canal con precision (hoy la atribucion por canal se fuga al dominio del motor)"
 }
 Maximo 5 insights, ordenados por impacto. Devolve SOLO el JSON.`;
 
@@ -98,7 +113,7 @@ Maximo 5 insights, ordenados por impacto. Devolve SOLO el JSON.`;
     }
   } catch { analysis = null; }
 
-  const payload = { audience, analysis, generatedAt: new Date().toISOString(), range: { since, until } };
+  const payload = { audience, ga4, analysis, generatedAt: new Date().toISOString(), range: { since, until } };
 
   // Guardar en properties.ai_audience[mes] (defensivo).
   const db = admin();
