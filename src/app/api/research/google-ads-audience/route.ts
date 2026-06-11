@@ -1,19 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchGoogleAdsAudience, googleAdsEnabled } from '@/lib/ads/googleAds';
+import { fetchGA4Audience, ga4Enabled } from '@/lib/ads/ga4';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
-  if (!googleAdsEnabled()) {
-    return NextResponse.json({ ok: false, error: 'google ads no configurado' }, { status: 200 });
-  }
   const since = req.nextUrl.searchParams.get('since') || undefined;
   const until = req.nextUrl.searchParams.get('until') || undefined;
-  try {
-    const audience = await fetchGoogleAdsAudience({ since, until });
-    return NextResponse.json({ ok: true, audience });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
+
+  // Healthcheck de conectividad + diagnostico de GA4 (errores expuestos a proposito).
+  const out: any = {
+    googleAds: { enabled: googleAdsEnabled() },
+    ga4: { enabled: ga4Enabled(), hasPropertyId: !!process.env.GOOGLE_GA4_PROPERTY_ID },
+  };
+
+  if (googleAdsEnabled()) {
+    try { out.googleAds.audience = await fetchGoogleAdsAudience({ since, until }); }
+    catch (e: any) { out.googleAds.error = String(e?.message || e); }
   }
+  if (ga4Enabled() && since && until) {
+    try { out.ga4.data = await fetchGA4Audience({ since, until }); }
+    catch (e: any) { out.ga4.error = String(e?.message || e); }
+  }
+  return NextResponse.json({ ok: true, ...out });
 }
