@@ -61,14 +61,19 @@ const n = (x: unknown) => Number(x) || 0;
 const dr = (since: string, until: string) => [{ startDate: since, endDate: until }];
 const eventFilter = (values: string[]) => ({ filter: { fieldName: 'eventName', inListFilter: { values } } });
 
-export interface GA4Channel { label: string; sessions: number; engineVisits: number; bookings: number }
+export interface GA4Channel { label: string; sessions: number; engineVisits: number }
+export interface GA4Count { label: string; bookings: number } // reservas directas reales por dimension
 export interface GA4Audience {
   fetchedAt: string;
   range: { since: string; until: string };
-  channels: GA4Channel[]; // por canal: sesiones, visitas al motor (intencion), reservas directas (venta)
+  channels: GA4Channel[]; // INTENCION por canal (visitas al motor) — confiable
+  // Las 47 reservas reales (evento confirmacion), perfil CONFIABLE (no sufre cross-domain):
+  bookingsByCountry: GA4Count[];
+  bookingsByDevice: GA4Count[];
+  bookingsByCity: GA4Count[];
   totalEngineVisits: number;
-  totalBookings: number; // evento reservas (confirmacion) = reservas directas reales
-  totalPurchases: number; // evento purchase: flag del estado del tracking ecommerce (hoy bajo)
+  totalBookings: number; // total de reservas directas reales del mes
+  totalPurchases: number; // flag del tracking ecommerce
   bookingEvents: string[];
   engineEvents: string[];
 }
@@ -80,35 +85,44 @@ export async function fetchGA4Audience(opts: { since: string; until: string; tim
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), opts.timeBudgetMs ?? 30000);
   try {
-    const [engineRows, bookingRows, sessRows, purchaseRows] = await Promise.all([
+    const bookingFilter = eventFilter(BOOKING_EVENTS);
+    const [engineRows, sessRows, byCountryRows, byDeviceRows, byCityRows, purchaseRows] = await Promise.all([
       runReport({ dateRanges: dr(since, until), dimensions: [{ name: 'sessionSourceMedium' }], metrics: [{ name: 'eventCount' }], dimensionFilter: eventFilter(ENGINE_EVENTS), limit: 12, orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }] }, ctrl.signal),
-      runReport({ dateRanges: dr(since, until), dimensions: [{ name: 'sessionSourceMedium' }], metrics: [{ name: 'eventCount' }], dimensionFilter: eventFilter(BOOKING_EVENTS), limit: 12, orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }] }, ctrl.signal),
       runReport({ dateRanges: dr(since, until), dimensions: [{ name: 'sessionSourceMedium' }], metrics: [{ name: 'sessions' }], limit: 25 }, ctrl.signal),
+      runReport({ dateRanges: dr(since, until), dimensions: [{ name: 'country' }], metrics: [{ name: 'eventCount' }], dimensionFilter: bookingFilter, limit: 12, orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }] }, ctrl.signal),
+      runReport({ dateRanges: dr(since, until), dimensions: [{ name: 'deviceCategory' }], metrics: [{ name: 'eventCount' }], dimensionFilter: bookingFilter }, ctrl.signal),
+      runReport({ dateRanges: dr(since, until), dimensions: [{ name: 'city' }], metrics: [{ name: 'eventCount' }], dimensionFilter: bookingFilter, limit: 8, orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }] }, ctrl.signal),
       runReport({ dateRanges: dr(since, until), metrics: [{ name: 'eventCount' }], dimensionFilter: eventFilter([PURCHASE_EVENT]) }, ctrl.signal),
     ]);
 
     const sessByChannel = new Map<string, number>();
     for (const r of sessRows) sessByChannel.set(r.dimensionValues?.[0]?.value || '', n(r.metricValues?.[0]?.value));
-    const bookByChannel = new Map<string, number>();
-    for (const r of bookingRows) bookByChannel.set(r.dimensionValues?.[0]?.value || '', n(r.metricValues?.[0]?.value));
 
-    // Union de canales con intencion o con reserva.
-    const labels = new Set<string>();
-    for (const r of engineRows) labels.add(r.dimensionValues?.[0]?.value || '');
-    for (const r of bookingRows) labels.add(r.dimensionValues?.[0]?.value || '');
-    const engineByChannel = new Map<string, number>();
-    for (const r of engineRows) engineByChannel.set(r.dimensionValues?.[0]?.value || '', n(r.metricValues?.[0]?.value));
+    const channels: GA4Channel[] = engineRows
+      .map((r) => {
+        const label = r.dimensionValues?.[0]?.value || '';
+        return { label, engineVisits: n(r.metricValues?.[0]?.value), sessions: sessByChannel.get(label) || 0 };
+      })
+      .filter((c) => c.label);
 
-    const channels: GA4Channel[] = [...labels]
-      .filter(Boolean)
-      .map((label) => ({ label, engineVisits: engineByChannel.get(label) || 0, bookings: bookByChannel.get(label) || 0, sessions: sessByChannel.get(label) || 0 }))
-      .sort((a, b) => b.bookings - a.bookings || b.engineVisits - a.engineVisits);
+    const mapBookings = (rows: any[], titleCase = false): GA4Count[] =>
+      rows
+        .map((r) => {
+          let label = r.dimensionValues?.[0]?.value || '';
+          if (titleCase) label = ({ mobile: 'Mobile', desktop: 'Desktop', tablet: 'Tablet' } as Record<string, string>)[label] || label;
+          return { label, bookings: n(r.metricValues?.[0]?.value) };
+        })
+        .filter((c) => c.label && c.bookings > 0);
+
+    const bookingsByCountry = mapBookings(byCountryRows);
+    const bookingsByDevice = mapBookings(byDeviceRows, true);
+    const bookingsByCity = mapBookings(byCityRows).filter((c) => c.label !== '(not set)');
 
     const totalEngineVisits = channels.reduce((s, c) => s + c.engineVisits, 0);
-    const totalBookings = channels.reduce((s, c) => s + c.bookings, 0);
+    const totalBookings = bookingsByCountry.reduce((s, c) => s + c.bookings, 0);
     const totalPurchases = purchaseRows.reduce((s, r) => s + n(r.metricValues?.[0]?.value), 0);
 
-    return { fetchedAt: new Date().toISOString(), range: { since, until }, channels, totalEngineVisits, totalBookings, totalPurchases, bookingEvents: BOOKING_EVENTS, engineEvents: ENGINE_EVENTS };
+    return { fetchedAt: new Date().toISOString(), range: { since, until }, channels, bookingsByCountry, bookingsByDevice, bookingsByCity, totalEngineVisits, totalBookings, totalPurchases, bookingEvents: BOOKING_EVENTS, engineEvents: ENGINE_EVENTS };
   } finally {
     clearTimeout(timer);
   }

@@ -67,32 +67,39 @@ export async function POST(req: NextRequest) {
     ga4 = await fetchGA4Audience({ since, until });
   } catch { ga4 = null; }
 
-  const prompt = `Sos un growth strategist senior de marketing hotelero. Te paso dos fuentes REALES del hotel cliente (mes ${since} a ${until}): (1) audiencia de GOOGLE ADS (su tracking interno de pauta) y (2) conversiones de GOOGLE ANALYTICS 4 (todos los canales del sitio). Tu trabajo: cruzarlas en un analisis de ALTO VALOR, con insights CONCRETOS y RAPIDAMENTE ACCIONABLES.
+  const totalBookings = ga4?.totalBookings ?? 0;
+  const prompt = `Sos un growth strategist senior de marketing hotelero. Analiza la AUDIENCIA del hotel cliente (mes ${since} a ${until}) y produci un informe CONCLUYENTE, concreto y accionable para el cliente.
 
-DATOS GOOGLE ADS (audiencia de la pauta; su conversion interna suele SUBcontar):
+EL NUMERO QUE IMPORTA — CONVERSION REAL = RESERVAS DIRECTAS DEL MOTOR: ${totalBookings} reservas (evento de confirmacion de GA4). ESTE es el valor de venta medible del sitio. PARTI SIEMPRE DE ESTE NUMERO GRANDE (${totalBookings}). NO uses las conversiones internas de Google Ads (que subcuentan, ~16) como el numero principal; son solo el tracking parcial de la pauta.
+
+QUIEN COMPRA — perfil REAL detras de las ${totalBookings} reservas (de GA4, CONFIABLE: pais/ciudad/dispositivo del que llega a la confirmacion):
+${ga4 ? JSON.stringify({ bookingsByCountry: ga4.bookingsByCountry, bookingsByDevice: ga4.bookingsByDevice, bookingsByCity: ga4.bookingsByCity, totalBookings: ga4.totalBookings }, null, 2) : 'no disponible'}
+
+PERFIL DE LA PAUTA — audiencia de Google Ads (demografia que GA4 no tiene: edad, genero; + geo y dispositivo de los clics pagos). Exprésalo en relevancia/porcentaje:
 ${JSON.stringify(audience, null, 2)}
 
-DATOS GOOGLE ANALYTICS 4 — embudo por canal:
-${ga4 ? JSON.stringify(ga4, null, 2) : 'no disponible'}
-SEMANTICA (respetala con precision, NO la confundas): "engineVisits" por canal = VISITAS AL MOTOR (INTENCION de compra) = DATO CONFIABLE por canal. "totalBookings" = reservas directas reales del mes (evento "reservas" en la pagina de confirmacion) = DATO CONFIABLE pero SOLO como TOTAL. La atribucion de "bookings" POR CANAL NO es confiable hoy: por falta de configuracion cross-domain, muchas reservas se atribuyen a los dominios del motor/pago (pms.visitoai.com, zola.com), por eso un canal con mucha intencion (ej. Meta 'ig / paid') puede figurar con 0 reservas, lo cual es FALSO. "totalPurchases" (ecommerce) esta casi en 0 = mal implementado.
+INTENCION POR CANAL (GA4, visitas al motor) — revela canales que Google Ads NO ve:
+${ga4 ? JSON.stringify(ga4.channels, null, 2) : 'no disponible'}
 
-CRUCE (lo mas valioso, SIN engañar): (a) usá engineVisits por canal (CONFIABLE) para mostrar que canales generan mas INTENCION, destacando los que Google Ads NO ve: Meta/Instagram, organico, directo. (b) Reportá el TOTAL de reservas directas (totalBookings) como numero del mes, pero NO lo dividas por canal ni concluyas que un canal "no convierte" basandote en bookings por canal (la atribucion esta distorsionada). NUNCA digas que Meta tiene 0 reservas. (c) Como accionable de ALTO impacto: recomenda arreglar el tracking cross-domain + ecommerce de GA4 para poder atribuir las reservas por canal con precision. Tono: oportunidades, nunca calificativos negativos.
+REGLAS DE ANALISIS:
+- El protagonista es: ${totalBookings} reservas directas reales, y QUE AUDIENCIA esta detras (pais %, dispositivo %, ciudades). Expresá los pesos en PORCENTAJE sobre el total de reservas.
+- Cruzá: el perfil de QUIEN COMPRA (GA4) vs el perfil de la PAUTA (Google Ads). Si la pauta lleva clics a un pais que casi no compra, o si quien compra es un pais/dispositivo poco priorizado, eso es una OPORTUNIDAD de realinear la inversion hacia el comprador real.
+- Para canales: usá engineVisits (intencion) para mostrar que Meta/organico/directo aportan intencion que Google Ads no ve. NO atribuyas reservas por canal (cross-domain distorsiona); NUNCA digas "Meta = 0 reservas".
+- Demografia (edad/genero) sale solo de Google Ads (GA4 no la tiene); usala para describir la audiencia de la pauta en %.
+- Edad/genero como % sobre clics. Geo de Google Ads como % de relevancia.
 
-REGLAS DE TONO (CRITICO — lo lee el hotel cliente):
-- Profesional, neutral y CONSTRUCTIVO. NUNCA uses calificativos negativos sobre el cliente (grave, derroche, mal, error, problema, falla, perdida, quemando). Todo gap se enmarca como OPORTUNIDAD puntual de mejorar conversion.
-- Ej: en vez de "estas quemando plata en Republica Dominicana", deci "hay una oportunidad clara de reasignar pauta hacia Colombia, donde se concentran las conversiones, para subir el ROI".
-- Cada insight apoyado en un NUMERO real de los datos. Accionable YA (que hacer concretamente).
+TONO (CRITICO — lo lee el hotel cliente): profesional, neutral, CONSTRUCTIVO. NUNCA calificativos negativos sobre el cliente (grave, derroche, mal, error, problema, falla, quemando, perdida). Todo gap = oportunidad puntual. Cada afirmacion con un NUMERO real.
 
 Responde UNICAMENTE con JSON valido, sin markdown:
 {
-  "headline": "el mensaje clave de la audiencia en una frase potente y positiva",
-  "whoConverts": "1 a 2 frases: el perfil que MEJOR convierte (edad, genero, geo, dispositivo) segun los datos",
+  "headline": "frase potente centrada en las ${totalBookings} reservas reales y quien compra (ej: 'Las ${totalBookings} reservas directas vienen mayormente de USA y Colombia en desktop')",
+  "whoBuys": "2 a 3 frases CONCLUYENTES: el perfil que compra las ${totalBookings} reservas (pais % top, dispositivo %, ciudades clave)",
+  "adVsBuyer": "1 a 2 frases: como se compara la audiencia de la PAUTA (Google Ads, en %) con quien REALMENTE compra, y la oportunidad de realinear",
   "insights": [
-    { "title": "titulo corto", "finding": "el dato concreto que lo sustenta", "action": "que hacer ya, especifico", "impact": "alto|medio|bajo" }
+    { "title": "titulo corto", "finding": "dato concreto en %/numero", "action": "que hacer ya, especifico", "impact": "alto|medio|bajo" }
   ],
-  "searchRead": "1 frase sobre los terminos de busqueda (marca vs generico vs competidor) y que implica",
-  "channelMix": "1 a 2 frases: que canales generan mas INTENCION (visitas al motor) segun GA4, destacando los que Google Ads no ve (Meta/Instagram, organico, directo). NO atribuyas reservas por canal aca.",
-  "trackingNote": "1 frase: oportunidad de configurar cross-domain + ecommerce en GA4 para atribuir las reservas directas por canal con precision (hoy la atribucion por canal se fuga al dominio del motor)"
+  "channelMix": "1 a 2 frases: que canales aportan mas INTENCION (visitas al motor) segun GA4, destacando los que Google Ads no ve (Meta/Instagram, organico, directo). NO atribuyas reservas por canal.",
+  "trackingNote": "1 frase: oportunidad de configurar cross-domain + ecommerce en GA4 para atribuir las reservas por canal con precision"
 }
 Maximo 5 insights, ordenados por impacto. Devolve SOLO el JSON.`;
 
