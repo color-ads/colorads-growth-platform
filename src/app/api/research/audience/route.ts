@@ -68,40 +68,46 @@ export async function POST(req: NextRequest) {
   } catch { ga4 = null; }
 
   const totalBookings = ga4?.totalBookings ?? 0;
-  const prompt = `Sos un growth strategist senior de marketing hotelero. Analiza la AUDIENCIA del hotel cliente (mes ${since} a ${until}) y produci un informe CONCLUYENTE, concreto y accionable para el cliente.
+  const prompt = `Sos un growth strategist senior de marketing hotelero. Producí los TEXTOS de un reporte de AUDIENCIAS premium y CONCLUYENTE para el hotel cliente (mes ${since} a ${until}). El tablero ya dibuja los graficos y calcula los %, indices y tasas; vos aportas el RELATO y los insights de alto valor (la frase de "y esto que significa para vos" de cada bloque).
 
-EL NUMERO QUE IMPORTA — CONVERSION REAL = RESERVAS DIRECTAS DEL MOTOR: ${totalBookings} reservas (evento de confirmacion de GA4). ESTE es el valor de venta medible del sitio. PARTI SIEMPRE DE ESTE NUMERO GRANDE (${totalBookings}). NO uses las conversiones internas de Google Ads (que subcuentan, ~16) como el numero principal; son solo el tracking parcial de la pauta.
+CONVERSION PROTAGONISTA = RESERVAS DIRECTAS DEL MOTOR: ${totalBookings} (evento de confirmacion GA4). Partí SIEMPRE de este numero. NUNCA uses las conversiones internas de Google Ads (~16) como protagonista.
 
-QUIEN COMPRA — perfil REAL detras de las ${totalBookings} reservas (de GA4, CONFIABLE: pais/ciudad/dispositivo del que llega a la confirmacion):
-${ga4 ? JSON.stringify({ bookingsByCountry: ga4.bookingsByCountry, bookingsByDevice: ga4.bookingsByDevice, bookingsByCity: ga4.bookingsByCity, totalBookings: ga4.totalBookings }, null, 2) : 'no disponible'}
+DATOS REALES (no inventes nada fuera de esto):
+GA4 (embudo, quien compra, cuando, intencion, landing):
+${ga4 ? JSON.stringify(ga4, null, 2) : 'no disponible'}
 
-PERFIL DE LA PAUTA — audiencia de Google Ads (demografia que GA4 no tiene: edad, genero; + geo y dispositivo de los clics pagos). Exprésalo en relevancia/porcentaje:
+GOOGLE ADS (pauta: totales, campañas, demografia, geo, audiencias):
 ${JSON.stringify(audience, null, 2)}
 
-INTENCION POR CANAL (GA4, visitas al motor) — revela canales que Google Ads NO ve:
-${ga4 ? JSON.stringify(ga4.channels, null, 2) : 'no disponible'}
+GUIA DE LOS BLOQUES (un insight por bloque, en lenguaje de negocio, con numeros reales):
+- EMBUDO: usuarios -> sesiones -> reservas. La intencion (visitas al motor / sesiones) es alta. El cuello de botella es motor->reserva. El crecimiento esta en cerrar mejor, no en mas trafico.
+- QUIEN COMPRA: pais % (top USA/Colombia), dispositivo %, ciudades. Comprador internacional + desktop => web/motor en ingles y desktop son criticos.
+- LEALTAD: recurrentes convierten MUCHO mas que nuevos (calcula la idea con newVsReturning) => activar recurrente (remarketing/CRM) es la inversion mas eficiente.
+- CUANDO: dia de semana que concentra reservas (Lun/Mar) => dayparting, ofertas y email a inicio de semana.
+- INTENCION POR CANAL: Google search enciende la mayoria; Meta aporta intencion que Google Ads NO ve. NO atribuyas reservas por canal (cross-domain). NUNCA "Meta = 0 reservas".
+- LANDING: la home concentra las aperturas del motor; /en (ingles) valida al comprador USA.
+- PAUTA (Google Ads): CTR vs benchmark hotelero (~2-5%), CPC, y CPA REAL = costo / ${totalBookings} reservas. Lenguaje de eficiencia.
+- OPORTUNIDAD (cliente): enmarca SIEMPRE como "mercados de oportunidad" (ej. USA lidera reservas y tiene mucho espacio de pauta; reforzar Colombia). NUNCA menciones el desperdicio en otros mercados de cara al cliente (eso va a internalNote).
 
-REGLAS DE ANALISIS:
-- El protagonista es: ${totalBookings} reservas directas reales, y QUE AUDIENCIA esta detras (pais %, dispositivo %, ciudades). Expresá los pesos en PORCENTAJE sobre el total de reservas.
-- Cruzá: el perfil de QUIEN COMPRA (GA4) vs el perfil de la PAUTA (Google Ads). Si la pauta lleva clics a un pais que casi no compra, o si quien compra es un pais/dispositivo poco priorizado, eso es una OPORTUNIDAD de realinear la inversion hacia el comprador real.
-- Para canales: usá engineVisits (intencion) para mostrar que Meta/organico/directo aportan intencion que Google Ads no ve. NO atribuyas reservas por canal (cross-domain distorsiona); NUNCA digas "Meta = 0 reservas".
-- Demografia (edad/genero) sale solo de Google Ads (GA4 no la tiene); usala para describir la audiencia de la pauta en %.
-- Edad/genero como % sobre clics. Geo de Google Ads como % de relevancia.
-
-TONO (CRITICO — lo lee el hotel cliente): profesional, neutral, CONSTRUCTIVO. NUNCA calificativos negativos sobre el cliente (grave, derroche, mal, error, problema, falla, quemando, perdida). Todo gap = oportunidad puntual. Cada afirmacion con un NUMERO real.
+TONO (CRITICO — lo lee el hotel cliente): profesional, neutral, CONSTRUCTIVO. NUNCA calificativos negativos sobre el cliente (grave, derroche, mal, error, problema, falla, quemando, perdida). Todo gap = oportunidad. Cada frase con un numero real.
 
 Responde UNICAMENTE con JSON valido, sin markdown:
 {
-  "headline": "frase potente centrada en las ${totalBookings} reservas reales y quien compra (ej: 'Las ${totalBookings} reservas directas vienen mayormente de USA y Colombia en desktop')",
-  "whoBuys": "2 a 3 frases CONCLUYENTES: el perfil que compra las ${totalBookings} reservas (pais % top, dispositivo %, ciudades clave)",
-  "internalNote": "NOTA INTERNA — SOLO para el equipo de ColorADS, NO se muestra al cliente. Aca SI podes ser directo y candido: el cruce de la PAUTA de Google Ads (% de impresiones por pais) vs QUIEN COMPRA realmente (GA4), donde se esta gastando impresiones en mercados que no reservan, y la reasignacion concreta de presupuesto (ej. mover de RD hacia USA/Colombia). Con numeros y % exactos.",
-  "insights": [
-    { "title": "titulo corto", "finding": "dato concreto en %/numero", "action": "que hacer ya, especifico", "impact": "alto|medio|bajo" }
-  ],
-  "channelMix": "1 a 2 frases: que canales aportan mas INTENCION (visitas al motor) segun GA4, destacando los que Google Ads no ve (Meta/Instagram, organico, directo). NO atribuyas reservas por canal.",
-  "trackingNote": "1 frase: oportunidad de configurar cross-domain + ecommerce en GA4 para atribuir las reservas por canal con precision"
+  "headline": "1 frase potente del mes centrada en las ${totalBookings} reservas reales y quien compra",
+  "tldr": "2 frases de resumen ejecutivo para abrir el reporte",
+  "whoBuys": "2 a 3 frases: el perfil que compra las ${totalBookings} reservas (pais %, dispositivo %, ciudades, nuevo/recurrente)",
+  "funnelInsight": "1 a 2 frases: lectura del embudo (intencion alta, cuello motor->reserva, donde esta la palanca)",
+  "loyaltyInsight": "1 frase: el recurrente convierte mucho mas que el nuevo; que hacer",
+  "timingInsight": "1 frase: que dias concentran la reserva y como aprovecharlo",
+  "channelMix": "1 a 2 frases: intencion por canal; Meta/organico/directo que Google Ads no ve. NO atribuir reservas por canal",
+  "landingInsight": "1 frase: la home concentra el motor; /en valida al comprador internacional",
+  "adsInsight": "1 a 2 frases: eficiencia de la pauta (CTR vs benchmark, CPA real ~ costo/${totalBookings})",
+  "opportunityInsight": "1 a 2 frases CLIENTE-FACING: mercados de oportunidad (USA lidera reservas con poca pauta; reforzar Colombia). Tono 100% oportunidad, sin mencionar desperdicio",
+  "insights": [ { "title": "titulo corto", "finding": "dato en %/numero", "action": "accion concreta", "impact": "alto|medio|bajo" } ],
+  "trackingNote": "1 frase: oportunidad de configurar cross-domain + ecommerce en GA4 para atribuir reservas por canal",
+  "internalNote": "NOTA INTERNA — SOLO equipo ColorADS, NO la ve el cliente. Candido: cruce de la pauta (% impresiones por pais, campañas como Demand Gen con 0 conv internas) vs quien compra realmente; reasignacion concreta de presupuesto (ej. mover de Rep.Dominicana hacia USA/Colombia). Numeros y % exactos."
 }
-Maximo 5 insights, ordenados por impacto. Devolve SOLO el JSON.`;
+Maximo 5 insights por impacto. Devolve SOLO el JSON.`;
 
   let analysis: any = null;
   try {
@@ -110,7 +116,7 @@ Maximo 5 insights, ordenados por impacto. Devolve SOLO el JSON.`;
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST', signal: ctrl.signal,
       headers: { 'content-type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 3000, messages: [{ role: 'user', content: prompt }] }),
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 4000, messages: [{ role: 'user', content: prompt }] }),
     });
     clearTimeout(t);
     const j = await resp.json();

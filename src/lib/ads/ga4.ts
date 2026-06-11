@@ -1,19 +1,17 @@
 /**
  * Gateway a la Google Analytics 4 Data API (runReport).
- * Reusa las credenciales OAuth de Google (refresh token con scope analytics.readonly)
- * + GOOGLE_GA4_PROPERTY_ID. Gateado: sin las env vars, ga4Enabled()=false.
+ * Reusa las credenciales OAuth de Google (scope analytics.readonly) + GOOGLE_GA4_PROPERTY_ID.
  *
- * IMPORTANTE — semantica de conversiones:
- * El evento "cloudbeds" en GA4 es VISITA/CARGA DEL MOTOR de reservas (intencion), NO una venta.
- * El evento "purchase" (compra real) hoy casi no se dispara -> GA4 no mide ventas confiables.
- * Por eso este gateway mide INTENCION (visitas al motor por canal) y reporta aparte el conteo
- * de compras como señal del estado del tracking. La VENTA REAL vive en Cloudbeds (PMS).
+ * Semantica: "cloudbeds" = visita/carga del motor (INTENCION). "reservas" = page view de
+ * /reservation/confirmation = RESERVA DIRECTA REAL. "purchase" = ecommerce (hoy roto).
+ * La VENTA REAL es el evento "reservas"; su perfil por pais/ciudad/dispositivo/dia es CONFIABLE.
+ * La atribucion de reservas por CANAL no es confiable (cross-domain).
  */
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const ENGINE_EVENTS = ['cloudbeds', 'CloudBeds']; // visita/carga del motor de reservas (intencion)
-const BOOKING_EVENTS = ['reservas']; // page view de /reservation/confirmation = reserva directa real (H98)
-const PURCHASE_EVENT = 'purchase'; // ecommerce estandar (hoy mal implementado -> flag de tracking)
+const ENGINE_EVENTS = ['cloudbeds', 'CloudBeds'];
+const BOOKING_EVENTS = ['reservas'];
+const PURCHASE_EVENT = 'purchase';
 
 export function ga4Enabled(): boolean {
   return !!(
@@ -25,7 +23,6 @@ export function ga4Enabled(): boolean {
 }
 
 let cachedToken: { value: string; expires: number } | null = null;
-
 async function getAccessToken(signal: AbortSignal): Promise<string> {
   if (cachedToken && cachedToken.expires > Date.now()) return cachedToken.value;
   const res = await fetch(TOKEN_URL, {
@@ -62,67 +59,93 @@ const dr = (since: string, until: string) => [{ startDate: since, endDate: until
 const eventFilter = (values: string[]) => ({ filter: { fieldName: 'eventName', inListFilter: { values } } });
 
 export interface GA4Channel { label: string; sessions: number; engineVisits: number }
-export interface GA4Count { label: string; bookings: number } // reservas directas reales por dimension
+export interface GA4Count { label: string; value: number }
+export interface GA4TrendPoint { date: string; value: number }
 export interface GA4Audience {
   fetchedAt: string;
   range: { since: string; until: string };
-  channels: GA4Channel[]; // INTENCION por canal (visitas al motor) — confiable
-  // Las 47 reservas reales (evento confirmacion), perfil CONFIABLE (no sufre cross-domain):
+  funnel: { sessions: number; users: number; newUsers: number };
+  channels: GA4Channel[];
   bookingsByCountry: GA4Count[];
   bookingsByDevice: GA4Count[];
   bookingsByCity: GA4Count[];
+  bookingsByDayOfWeek: GA4Count[]; // label = dia (en ingles), value = reservas
+  bookingsTrend: GA4TrendPoint[]; // date YYYY-MM-DD
+  newVsReturning: { newBookings: number; returningBookings: number; newSessions: number; returningSessions: number };
+  engineLandingPages: GA4Count[]; // landing page -> aperturas de motor
   totalEngineVisits: number;
-  totalBookings: number; // total de reservas directas reales del mes
-  totalPurchases: number; // flag del tracking ecommerce
-  bookingEvents: string[];
-  engineEvents: string[];
+  totalBookings: number;
+  totalPurchases: number;
 }
 
-/** Intencion (visitas al motor) por canal desde GA4. null si no esta configurado. */
+function mapCount(rows: any[], titleCase = false): GA4Count[] {
+  return rows
+    .map((r) => {
+      let label = r.dimensionValues?.[0]?.value || '';
+      if (titleCase) label = ({ mobile: 'Mobile', desktop: 'Desktop', tablet: 'Tablet' } as Record<string, string>)[label] || label;
+      return { label, value: n(r.metricValues?.[0]?.value) };
+    })
+    .filter((c) => c.label && c.value > 0);
+}
+function isoDate(d: string) { return d.length === 8 ? `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}` : d; }
+
 export async function fetchGA4Audience(opts: { since: string; until: string; timeBudgetMs?: number }): Promise<GA4Audience | null> {
   if (!ga4Enabled()) return null;
   const { since, until } = opts;
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), opts.timeBudgetMs ?? 30000);
+  const timer = setTimeout(() => ctrl.abort(), opts.timeBudgetMs ?? 40000);
+  const bookF = eventFilter(BOOKING_EVENTS);
+  const D = dr(since, until);
   try {
-    const bookingFilter = eventFilter(BOOKING_EVENTS);
-    const [engineRows, sessRows, byCountryRows, byDeviceRows, byCityRows, purchaseRows] = await Promise.all([
-      runReport({ dateRanges: dr(since, until), dimensions: [{ name: 'sessionSourceMedium' }], metrics: [{ name: 'eventCount' }], dimensionFilter: eventFilter(ENGINE_EVENTS), limit: 12, orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }] }, ctrl.signal),
-      runReport({ dateRanges: dr(since, until), dimensions: [{ name: 'sessionSourceMedium' }], metrics: [{ name: 'sessions' }], limit: 25 }, ctrl.signal),
-      runReport({ dateRanges: dr(since, until), dimensions: [{ name: 'country' }], metrics: [{ name: 'eventCount' }], dimensionFilter: bookingFilter, limit: 12, orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }] }, ctrl.signal),
-      runReport({ dateRanges: dr(since, until), dimensions: [{ name: 'deviceCategory' }], metrics: [{ name: 'eventCount' }], dimensionFilter: bookingFilter }, ctrl.signal),
-      runReport({ dateRanges: dr(since, until), dimensions: [{ name: 'city' }], metrics: [{ name: 'eventCount' }], dimensionFilter: bookingFilter, limit: 8, orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }] }, ctrl.signal),
-      runReport({ dateRanges: dr(since, until), metrics: [{ name: 'eventCount' }], dimensionFilter: eventFilter([PURCHASE_EVENT]) }, ctrl.signal),
+    const [
+      funnelRows, engineRows, byCountry, byDevice, byCity, byDow, byDate, bookNvR, sessNvR, landingRows, purchaseRows,
+    ] = await Promise.all([
+      runReport({ dateRanges: D, metrics: [{ name: 'sessions' }, { name: 'totalUsers' }, { name: 'newUsers' }] }, ctrl.signal),
+      runReport({ dateRanges: D, dimensions: [{ name: 'sessionSourceMedium' }], metrics: [{ name: 'eventCount' }], dimensionFilter: eventFilter(ENGINE_EVENTS), limit: 12, orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }] }, ctrl.signal),
+      runReport({ dateRanges: D, dimensions: [{ name: 'country' }], metrics: [{ name: 'eventCount' }], dimensionFilter: bookF, limit: 12, orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }] }, ctrl.signal),
+      runReport({ dateRanges: D, dimensions: [{ name: 'deviceCategory' }], metrics: [{ name: 'eventCount' }], dimensionFilter: bookF }, ctrl.signal),
+      runReport({ dateRanges: D, dimensions: [{ name: 'city' }], metrics: [{ name: 'eventCount' }], dimensionFilter: bookF, limit: 8, orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }] }, ctrl.signal),
+      runReport({ dateRanges: D, dimensions: [{ name: 'dayOfWeekName' }], metrics: [{ name: 'eventCount' }], dimensionFilter: bookF }, ctrl.signal),
+      runReport({ dateRanges: D, dimensions: [{ name: 'date' }], metrics: [{ name: 'eventCount' }], dimensionFilter: bookF, orderBys: [{ dimension: { dimensionName: 'date' } }] }, ctrl.signal),
+      runReport({ dateRanges: D, dimensions: [{ name: 'newVsReturning' }], metrics: [{ name: 'eventCount' }], dimensionFilter: bookF }, ctrl.signal),
+      runReport({ dateRanges: D, dimensions: [{ name: 'newVsReturning' }], metrics: [{ name: 'sessions' }] }, ctrl.signal),
+      runReport({ dateRanges: D, dimensions: [{ name: 'landingPage' }], metrics: [{ name: 'eventCount' }], dimensionFilter: eventFilter(ENGINE_EVENTS), limit: 8, orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }] }, ctrl.signal),
+      runReport({ dateRanges: D, metrics: [{ name: 'eventCount' }], dimensionFilter: eventFilter([PURCHASE_EVENT]) }, ctrl.signal),
     ]);
 
-    const sessByChannel = new Map<string, number>();
-    for (const r of sessRows) sessByChannel.set(r.dimensionValues?.[0]?.value || '', n(r.metricValues?.[0]?.value));
+    const fm = funnelRows[0]?.metricValues || [];
+    const funnel = { sessions: n(fm[0]?.value), users: n(fm[1]?.value), newUsers: n(fm[2]?.value) };
 
-    const channels: GA4Channel[] = engineRows
-      .map((r) => {
-        const label = r.dimensionValues?.[0]?.value || '';
-        return { label, engineVisits: n(r.metricValues?.[0]?.value), sessions: sessByChannel.get(label) || 0 };
-      })
-      .filter((c) => c.label);
+    const channels: GA4Channel[] = engineRows.map((r) => ({ label: r.dimensionValues?.[0]?.value || '', engineVisits: n(r.metricValues?.[0]?.value), sessions: 0 })).filter((c) => c.label);
 
-    const mapBookings = (rows: any[], titleCase = false): GA4Count[] =>
-      rows
-        .map((r) => {
-          let label = r.dimensionValues?.[0]?.value || '';
-          if (titleCase) label = ({ mobile: 'Mobile', desktop: 'Desktop', tablet: 'Tablet' } as Record<string, string>)[label] || label;
-          return { label, bookings: n(r.metricValues?.[0]?.value) };
-        })
-        .filter((c) => c.label && c.bookings > 0);
+    const bookingsByCountry = mapCount(byCountry);
+    const bookingsByDevice = mapCount(byDevice, true);
+    const bookingsByCity = mapCount(byCity).filter((c) => c.label !== '(not set)');
+    const bookingsByDayOfWeek = mapCount(byDow);
+    const bookingsTrend: GA4TrendPoint[] = byDate.map((r) => ({ date: isoDate(r.dimensionValues?.[0]?.value || ''), value: n(r.metricValues?.[0]?.value) })).filter((p) => p.date);
+    const engineLandingPages = mapCount(landingRows);
 
-    const bookingsByCountry = mapBookings(byCountryRows);
-    const bookingsByDevice = mapBookings(byDeviceRows, true);
-    const bookingsByCity = mapBookings(byCityRows).filter((c) => c.label !== '(not set)');
+    const nvrBook = new Map<string, number>();
+    for (const r of bookNvR) nvrBook.set(r.dimensionValues?.[0]?.value || '', n(r.metricValues?.[0]?.value));
+    const nvrSess = new Map<string, number>();
+    for (const r of sessNvR) nvrSess.set(r.dimensionValues?.[0]?.value || '', n(r.metricValues?.[0]?.value));
+    const newVsReturning = {
+      newBookings: nvrBook.get('new') || 0,
+      returningBookings: nvrBook.get('returning') || 0,
+      newSessions: nvrSess.get('new') || 0,
+      returningSessions: nvrSess.get('returning') || 0,
+    };
 
     const totalEngineVisits = channels.reduce((s, c) => s + c.engineVisits, 0);
-    const totalBookings = bookingsByCountry.reduce((s, c) => s + c.bookings, 0);
+    const totalBookings = bookingsByCountry.reduce((s, c) => s + c.value, 0);
     const totalPurchases = purchaseRows.reduce((s, r) => s + n(r.metricValues?.[0]?.value), 0);
 
-    return { fetchedAt: new Date().toISOString(), range: { since, until }, channels, bookingsByCountry, bookingsByDevice, bookingsByCity, totalEngineVisits, totalBookings, totalPurchases, bookingEvents: BOOKING_EVENTS, engineEvents: ENGINE_EVENTS };
+    return {
+      fetchedAt: new Date().toISOString(), range: { since, until },
+      funnel, channels, bookingsByCountry, bookingsByDevice, bookingsByCity,
+      bookingsByDayOfWeek, bookingsTrend, newVsReturning, engineLandingPages,
+      totalEngineVisits, totalBookings, totalPurchases,
+    };
   } finally {
     clearTimeout(timer);
   }

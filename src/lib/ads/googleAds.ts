@@ -66,9 +66,13 @@ const GENDER_LABELS: Record<string, string> = { MALE: 'Hombres', FEMALE: 'Mujere
 
 export interface AudienceRow { label: string; impressions: number; clicks: number; conversions: number; cost?: number }
 export interface SearchTermRow { term: string; impressions: number; clicks: number; conversions: number }
+export interface AdsTotals { impressions: number; clicks: number; ctr: number; avgCpc: number; cost: number; conversions: number }
+export interface CampaignRow { name: string; channel: string; clicks: number; conversions: number; cost: number }
 export interface GoogleAdsAudience {
   fetchedAt: string;
   range: { since: string; until: string };
+  totals: AdsTotals;
+  campaigns: CampaignRow[];
   devices: AudienceRow[];
   ageRanges: AudienceRow[];
   genders: AudienceRow[];
@@ -109,13 +113,27 @@ export async function fetchGoogleAdsAudience(opts: { since?: string; until?: str
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), opts.timeBudgetMs ?? 45000);
   try {
-    const [devRows, ageRows, genRows, geoRows, stRows] = await Promise.all([
+    const [devRows, ageRows, genRows, geoRows, stRows, totRows, campRows] = await Promise.all([
       gaql(`SELECT segments.device, metrics.impressions, metrics.clicks, metrics.conversions, metrics.cost_micros FROM customer WHERE ${clause}`, cid, ctrl.signal),
       gaql(`SELECT ad_group_criterion.age_range.type, metrics.impressions, metrics.clicks, metrics.conversions FROM age_range_view WHERE ${clause}`, cid, ctrl.signal),
       gaql(`SELECT ad_group_criterion.gender.type, metrics.impressions, metrics.clicks, metrics.conversions FROM gender_view WHERE ${clause}`, cid, ctrl.signal),
       gaql(`SELECT geographic_view.country_criterion_id, metrics.impressions, metrics.clicks, metrics.conversions FROM geographic_view WHERE ${clause}`, cid, ctrl.signal),
       gaql(`SELECT search_term_view.search_term, metrics.impressions, metrics.clicks, metrics.conversions FROM search_term_view WHERE ${clause} ORDER BY metrics.clicks DESC LIMIT 25`, cid, ctrl.signal),
+      gaql(`SELECT metrics.impressions, metrics.clicks, metrics.ctr, metrics.average_cpc, metrics.cost_micros, metrics.conversions FROM customer WHERE ${clause}`, cid, ctrl.signal),
+      gaql(`SELECT campaign.name, campaign.advertising_channel_type, metrics.clicks, metrics.conversions, metrics.cost_micros FROM campaign WHERE ${clause} AND metrics.impressions > 0 ORDER BY metrics.clicks DESC`, cid, ctrl.signal),
     ]);
+
+    const tm = totRows[0]?.metrics || {};
+    const totals: AdsTotals = {
+      impressions: n(tm.impressions), clicks: n(tm.clicks), ctr: n(tm.ctr),
+      avgCpc: n(tm.averageCpc) / 1e6, cost: n(tm.costMicros) / 1e6, conversions: n(tm.conversions),
+    };
+    const campaigns: CampaignRow[] = campRows
+      .map((r) => ({
+        name: String(r.campaign?.name || ''), channel: String(r.campaign?.advertisingChannelType || ''),
+        clicks: n(r.metrics?.clicks), conversions: n(r.metrics?.conversions), cost: n(r.metrics?.costMicros) / 1e6,
+      }))
+      .filter((c) => c.name).slice(0, 8);
 
     const devices = aggregate(devRows, (r) => {
       const d = r.segments?.device;
@@ -151,7 +169,7 @@ export async function fetchGoogleAdsAudience(opts: { since?: string; until?: str
     return {
       fetchedAt: new Date().toISOString(),
       range: { since, until },
-      devices, ageRanges, genders, geo, searchTerms,
+      totals, campaigns, devices, ageRanges, genders, geo, searchTerms,
     };
   } finally {
     clearTimeout(timer);
