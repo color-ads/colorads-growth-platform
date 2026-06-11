@@ -94,7 +94,7 @@ Responde UNICAMENTE con JSON valido, sin markdown:
 {
   "headline": "frase potente centrada en las ${totalBookings} reservas reales y quien compra (ej: 'Las ${totalBookings} reservas directas vienen mayormente de USA y Colombia en desktop')",
   "whoBuys": "2 a 3 frases CONCLUYENTES: el perfil que compra las ${totalBookings} reservas (pais % top, dispositivo %, ciudades clave)",
-  "adVsBuyer": "1 a 2 frases: como se compara la audiencia de la PAUTA (Google Ads, en %) con quien REALMENTE compra, y la oportunidad de realinear",
+  "internalNote": "NOTA INTERNA — SOLO para el equipo de ColorADS, NO se muestra al cliente. Aca SI podes ser directo y candido: el cruce de la PAUTA de Google Ads (% de impresiones por pais) vs QUIEN COMPRA realmente (GA4), donde se esta gastando impresiones en mercados que no reservan, y la reasignacion concreta de presupuesto (ej. mover de RD hacia USA/Colombia). Con numeros y % exactos.",
   "insights": [
     { "title": "titulo corto", "finding": "dato concreto en %/numero", "action": "que hacer ya, especifico", "impact": "alto|medio|bajo" }
   ],

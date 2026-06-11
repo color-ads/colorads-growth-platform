@@ -14,7 +14,7 @@ type GA4 = {
   totalEngineVisits?: number; totalBookings?: number;
 };
 type Insight = { title?: string; finding?: string; action?: string; impact?: string };
-type Analysis = { headline?: string; whoBuys?: string; adVsBuyer?: string; insights?: Insight[]; channelMix?: string; trackingNote?: string };
+type Analysis = { headline?: string; whoBuys?: string; internalNote?: string; insights?: Insight[]; channelMix?: string; trackingNote?: string };
 type Payload = { audience?: Audience; ga4?: GA4 | null; analysis?: Analysis | null; generatedAt?: string };
 
 const INK = '#1d3557';
@@ -187,12 +187,7 @@ export function AudiencePanel({ property, year, month, periodLabel, canGenerate 
         </Section>
       )}
 
-      {/* Pauta vs comprador + insights */}
-      {an.adVsBuyer && (
-        <div style={{ background: '#f6f9fb', border: '1px solid #e4eef4', borderRadius: 12, padding: '12px 16px', marginBottom: 18, fontSize: 13, color: '#3d4654', lineHeight: 1.55 }}>
-          <strong style={{ color: BLUE }}>Pauta vs comprador real:</strong> {an.adVsBuyer}
-        </div>
-      )}
+      {/* (La nota interna "pauta vs comprador" NO se renderiza: queda en el backend para el equipo). */}
       {(an.insights?.length || 0) > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginBottom: 24 }}>
           {an.insights!.map((ins, i) => (
