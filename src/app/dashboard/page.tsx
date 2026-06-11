@@ -7,6 +7,7 @@ import { RevenueExplorer, type SourceRow } from '@/components/dashboard/RevenueE
 import { DemographicProfile } from '@/components/dashboard/DemographicProfile'
 import CompetitionPanel from '@/components/dashboard/CompetitionPanel';
 import { ExecutiveSummary } from '@/components/dashboard/ExecutiveSummary'
+import { AudiencePanel } from '@/components/dashboard/AudiencePanel'
 import { InsightsPanel, ChannelBreakdown, RoiStrip } from '@/components/dashboard/InsightsPanel'
 import type { MonthlyReport, Property } from '@/types'
 import { MonthSelector } from '@/components/dashboard/MonthSelector'
@@ -252,8 +253,11 @@ export default async function DashboardPage({
   searchParams: Promise<{ m?: string; y?: string; tab?: string }>
 }) {
   const sp = await searchParams
-  const tab: 'performance' | 'acciones' | 'resumen' =
-    sp.tab === 'acciones' ? 'acciones' : sp.tab === 'resumen' ? 'resumen' : 'performance'
+  const tab: 'performance' | 'acciones' | 'resumen' | 'audiencias' =
+    sp.tab === 'acciones' ? 'acciones'
+      : sp.tab === 'resumen' ? 'resumen'
+      : sp.tab === 'audiencias' ? 'audiencias'
+      : 'performance'
   const now = new Date()
   const nowY = now.getFullYear()
   const nowM = now.getMonth() + 1
@@ -359,7 +363,7 @@ export default async function DashboardPage({
             <>
               {/* Tabs: Performance (metricas) y Acciones y conclusiones (propuestas + competencia) */}
               <div className="flex gap-1 border-b border-gray-200">
-                {([['performance', 'Performance'], ['acciones', 'Acciones y conclusiones'], ['resumen', 'Resumen ejecutivo']] as const).map(([key, label]) => (
+                {([['performance', 'Performance'], ['acciones', 'Acciones y conclusiones'], ['audiencias', 'Audiencias'], ['resumen', 'Resumen ejecutivo']] as const).map(([key, label]) => (
                   <a
                     key={key}
                     href={`${selYear === nowY && selMonth === nowM ? '/dashboard' : `/dashboard?y=${selYear}&m=${selMonth}`}${selYear === nowY && selMonth === nowM ? '?' : '&'}tab=${key}`}
@@ -394,6 +398,14 @@ export default async function DashboardPage({
                   {/* Conclusiones de competencia: concentradas en el mes en curso. No se muestran en meses anteriores. */}
                   {selYear === nowY && selMonth === nowM && <CompetitionPanel slug="h98" />}
                 </>
+              ) : tab === 'audiencias' ? (
+                <AudiencePanel
+                  property={property}
+                  year={selYear}
+                  month={selMonth}
+                  periodLabel={periodLabel}
+                  canGenerate={selYear === nowY && selMonth === nowM}
+                />
               ) : (
                 <ExecutiveSummary
                   report={currentReport}
