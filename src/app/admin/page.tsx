@@ -36,6 +36,13 @@ export default function AdminPage() {
   const [researching, setResearching] = useState(false)
   const [researchMsg, setResearchMsg] = useState('')
 
+  // Nota interna de audiencia (Google Ads + GA4) — solo para el equipo
+  const [audInternal, setAudInternal] = useState('')
+  const [audBookings, setAudBookings] = useState<number | null>(null)
+  const [audAt, setAudAt] = useState('')
+  const [audMsg, setAudMsg] = useState('')
+  const [audGenerating, setAudGenerating] = useState(false)
+
   const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/admin/billing?slug=${SLUG}`)
@@ -52,6 +59,22 @@ export default function AdminPage() {
       .then(d => setCompetitors((d.competitors ?? []).join('\n')))
       .catch(() => {})
   }, [])
+
+  // Cargar la nota interna de audiencia para el mes seleccionado
+  useEffect(() => {
+    setAudInternal(''); setAudBookings(null); setAudAt(''); setAudMsg('')
+    fetch(`/api/research/audience?slug=${SLUG}&y=${year}&m=${month}`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => {
+        const data = d?.data
+        if (data) {
+          setAudInternal(data.analysis?.internalNote || '')
+          setAudBookings(typeof data.ga4?.totalBookings === 'number' ? data.ga4.totalBookings : null)
+          setAudAt(data.generatedAt || '')
+        }
+      })
+      .catch(() => {})
+  }, [year, month])
 
   // Prefill form when selecting a month that already has data
   useEffect(() => {
@@ -109,6 +132,24 @@ export default function AdminPage() {
       setResearchMsg(res.ok ? `Investigacion actualizada \u2713 (${d.length} car.)` : (d.error || 'Error en la investigacion'))
     } catch { setResearchMsg('Error de red / timeout') }
     setResearching(false)
+  }
+
+  async function generateAudience() {
+    setAudGenerating(true); setAudMsg('Analizando audiencia (Google Ads + GA4)... (~40s)')
+    try {
+      const res = await fetch('/api/research/audience', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: SLUG, year, month }),
+      })
+      const d = await res.json()
+      if (d?.ok && d.data) {
+        setAudInternal(d.data.analysis?.internalNote || '')
+        setAudBookings(typeof d.data.ga4?.totalBookings === 'number' ? d.data.ga4.totalBookings : null)
+        setAudAt(d.data.generatedAt || '')
+        setAudMsg('Audiencia actualizada ✓')
+      } else setAudMsg(d?.error || 'Error al generar')
+    } catch { setAudMsg('Error de red / timeout') }
+    setAudGenerating(false)
   }
 
   async function logout() {
@@ -243,6 +284,38 @@ export default function AdminPage() {
               {researching ? 'Investigando...' : 'Actualizar investigacion'}
             </button>
           </div>
+        </div>
+
+        {/* Nota interna — Audiencia (solo equipo, no la ve el cliente) */}
+        <div className="bg-white border border-gray-100 rounded-xl p-5 mt-5">
+          <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+            <h3 className="text-[12px] font-medium text-gray-900">
+              Nota interna · Audiencia (Google Ads + GA4)
+              <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">Solo equipo</span>
+            </h3>
+            <div className="flex items-center gap-3">
+              {audMsg && <span className={`text-[12px] ${audMsg.includes('✓') ? 'text-green-600' : 'text-gray-500'}`}>{audMsg}</span>}
+              <button onClick={generateAudience} disabled={audGenerating}
+                className="px-4 py-2 rounded-lg text-[13px] font-medium text-white disabled:opacity-50"
+                style={{ background: '#1a1a1a' }}>
+                {audGenerating ? 'Analizando...' : 'Actualizar audiencia'}
+              </button>
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-400 mb-3">
+            Cruce candido de pauta vs comprador real para {MONTHS[month - 1]} {year}. El cliente NO ve esto en su tablero.
+            {audBookings !== null && <span className="text-gray-600 font-medium"> · {audBookings} reservas directas</span>}
+            {audAt && <span> · {new Date(audAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}</span>}
+          </p>
+          {audInternal ? (
+            <div className="text-[13px] text-gray-700 leading-relaxed bg-amber-50/40 border border-amber-100 rounded-lg p-4 whitespace-pre-line">
+              {audInternal}
+            </div>
+          ) : (
+            <div className="text-[12px] text-gray-400 border border-dashed border-gray-200 rounded-lg p-4">
+              Sin nota para este mes. Tocá &quot;Actualizar audiencia&quot; para generarla (requiere Google Ads + GA4 configurados).
+            </div>
+          )}
         </div>
 
         {/* Existing months table */}
