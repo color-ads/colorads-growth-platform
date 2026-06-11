@@ -78,6 +78,7 @@ Responde UNICAMENTE con JSON valido, sin markdown:
   "conclusions": [ "conclusion puntual apoyada en un dato", "..." ],
   "actions": [ { "action": "que hacer", "rationale": "por que (dato)", "impact": "alto|medio|bajo", "effort": "alto|medio|bajo", "when": "este mes|proximo mes", "committed": false } ],
   "competitivePositioning": "1 a 2 frases: donde esta el hotel vs competencia (tarifa/rating/pauta), enmarcado como oportunidad",
+  "audienceInsight": "1 a 2 frases: lectura growth del perfil de audiencia del mes (paises, anticipacion de reserva, ticket) y que implica para la pauta",
   "nextMonthFocus": "el foco numero 1 del proximo mes en 1 frase"
 }
 

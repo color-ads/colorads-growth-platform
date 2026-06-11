@@ -13,6 +13,7 @@ type Summary = {
   conclusions?: string[];
   actions?: Action[];
   competitivePositioning?: string;
+  audienceInsight?: string;
   nextMonthFocus?: string;
   generatedAt?: string;
   period?: string;
@@ -36,7 +37,8 @@ function levelColor(v?: string) {
 }
 
 function buildContext(report: MonthlyReport, prev: MonthlyReport | null, property: Property, periodLabel: string, competition: any, tracking: Record<number, { will_execute: string; period: string; comment: string }>) {
-  const topCountries = (report.geo_breakdown || []).slice(0, 4).map((c: any) => ({ country: c.country, pct: c.pct }));
+  const topCountries = (report.geo_breakdown || []).slice(0, 5).map((c: any) => ({ country: c.country, pct: c.pct, revenue: c.revenue }));
+  const leadTime = (report.booking_lead_time_breakdown || []).map((l: any) => ({ range: l.range, pct: l.pct }));
   const committed = Object.values(tracking || {}).filter((t) => t?.will_execute === 'yes').map((t) => ({ period: t.period, comment: t.comment }));
   const ai = report.ai_insights as any;
   return {
@@ -57,8 +59,14 @@ function buildContext(report: MonthlyReport, prev: MonthlyReport | null, propert
       clicks: report.total_clicks,
       cpc: report.avg_cpc,
       topCountries,
+      leadTime,
     },
-    prevKpis: prev ? { roas: prev.roas, attributableRevenue: prev.attributable_revenue } : null,
+    prevKpis: prev ? {
+      roas: prev.roas,
+      attributableRevenue: prev.attributable_revenue,
+      investment: prev.total_investment,
+      bookings: prev.total_bookings,
+    } : null,
     insights: ai ? {
       executive_summary: ai.executive_summary,
       next_month_recommendation: ai.next_month_recommendation,
@@ -70,6 +78,113 @@ function buildContext(report: MonthlyReport, prev: MonthlyReport | null, propert
     } : null,
     committed,
   };
+}
+
+const nfCompact = new Intl.NumberFormat('es-CO', { notation: 'compact', maximumFractionDigits: 1 });
+function money(v: number) { return `$${nfCompact.format(v)}`; }
+
+// Par de barras horizontales (mes anterior vs actual), print-safe (solo divs).
+function CompareRow({ label, prev, curr, fmt }: { label: string; prev: number; curr: number; fmt: (v: number) => string }) {
+  const max = Math.max(prev, curr, 1);
+  const up = curr >= prev;
+  const delta = prev > 0 ? Math.round(((curr - prev) / prev) * 100) : null;
+  const bar = (v: number, color: string, bold: boolean) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ flex: 1, height: 14, background: '#f0f3f7', borderRadius: 7, overflow: 'hidden' }}>
+        <div style={{ width: `${Math.max((v / max) * 100, 2)}%`, height: '100%', background: color, borderRadius: 7 }} />
+      </div>
+      <span style={{ flexShrink: 0, width: 72, fontSize: 11.5, fontWeight: bold ? 800 : 500, color: bold ? INK : '#8a93a1', textAlign: 'right' }}>{fmt(v)}</span>
+    </div>
+  );
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: INK }}>{label}</span>
+        {delta !== null && (
+          <span style={{ fontSize: 10.5, fontWeight: 700, color: up ? '#1b7a44' : '#b07400', background: up ? '#e7f5ec' : '#fdf3e0', borderRadius: 999, padding: '1px 8px' }}>
+            {delta > 0 ? '+' : ''}{delta}% vs mes anterior
+          </span>
+        )}
+      </div>
+      <div style={{ display: 'grid', gap: 3 }}>
+        {bar(prev, '#c9d4de', false)}
+        {bar(curr, BLUE, true)}
+      </div>
+    </div>
+  );
+}
+
+function MonthCompare({ report, prevReport }: { report: MonthlyReport; prevReport: MonthlyReport }) {
+  const rows: { label: string; prev: number; curr: number; fmt: (v: number) => string }[] = [
+    { label: 'Facturación atribuible', prev: prevReport.attributable_revenue || 0, curr: report.attributable_revenue || 0, fmt: money },
+    { label: 'ROAS', prev: prevReport.roas || 0, curr: report.roas || 0, fmt: (v) => `${v.toFixed(1)}x` },
+    { label: 'Reservas', prev: prevReport.total_bookings || 0, curr: report.total_bookings || 0, fmt: (v) => String(Math.round(v)) },
+    { label: 'Inversión', prev: prevReport.total_investment || 0, curr: report.total_investment || 0, fmt: money },
+  ].filter((r) => r.prev > 0 || r.curr > 0);
+  if (!rows.length) return null;
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.5, color: INK, marginBottom: 4 }}>Comparativa vs mes anterior</div>
+      <div style={{ fontSize: 10.5, color: '#8a93a1', marginBottom: 10 }}>
+        <span style={{ display: 'inline-block', width: 10, height: 10, background: '#c9d4de', borderRadius: 3, marginRight: 4, verticalAlign: 'middle' }} /> mes anterior
+        <span style={{ display: 'inline-block', width: 10, height: 10, background: BLUE, borderRadius: 3, margin: '0 4px 0 14px', verticalAlign: 'middle' }} /> este mes
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', columnGap: 28 }}>
+        {rows.map((r) => <CompareRow key={r.label} {...r} />)}
+      </div>
+    </div>
+  );
+}
+
+function AudienceProfile({ report, insight }: { report: MonthlyReport; insight?: string }) {
+  const geo = (report.geo_breakdown || []).filter((g) => g.country && g.country !== 'Otros').slice(0, 5);
+  const lead = (report.booking_lead_time_breakdown || []).filter((l) => (l.pct || 0) > 0);
+  if (!geo.length && !lead.length) return null;
+  const maxPct = Math.max(...geo.map((g) => g.pct || 0), 1);
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.5, color: INK, marginBottom: 10 }}>Perfil de audiencia</div>
+      <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+        {geo.length > 0 && (
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <div style={{ fontSize: 10.5, color: '#8a93a1', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 8 }}>Top países por facturación</div>
+            {geo.map((g, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ flexShrink: 0, width: 110, fontSize: 11.5, color: '#3d4654', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.country}</span>
+                <div style={{ flex: 1, height: 12, background: '#f0f3f7', borderRadius: 6, overflow: 'hidden' }}>
+                  <div style={{ width: `${Math.max(((g.pct || 0) / maxPct) * 100, 2)}%`, height: '100%', background: BLUE, borderRadius: 6 }} />
+                </div>
+                <span style={{ flexShrink: 0, width: 38, fontSize: 11, fontWeight: 700, color: INK, textAlign: 'right' }}>{Math.round(g.pct || 0)}%</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ flex: 1, minWidth: 240 }}>
+          {lead.length > 0 && (
+            <>
+              <div style={{ fontSize: 10.5, color: '#8a93a1', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 8 }}>Anticipación de reserva</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                {lead.map((l, i) => (
+                  <span key={i} style={{ fontSize: 11, color: '#3d4654', background: '#f4f6f9', borderRadius: 999, padding: '3px 10px' }}>
+                    {l.range} · <strong style={{ color: INK }}>{Math.round(l.pct || 0)}%</strong>
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
+          <div style={{ display: 'flex', gap: 18 }}>
+            {(report.avg_ticket || 0) > 0 && <div><div style={{ fontSize: 10.5, color: '#8a93a1' }}>Ticket promedio</div><div style={{ fontSize: 16, fontWeight: 800, color: INK }}>{money(report.avg_ticket)}</div></div>}
+            {(report.avg_stay || 0) > 0 && <div><div style={{ fontSize: 10.5, color: '#8a93a1' }}>Estadía promedio</div><div style={{ fontSize: 16, fontWeight: 800, color: INK }}>{report.avg_stay.toFixed(1)} noches</div></div>}
+          </div>
+        </div>
+      </div>
+      {insight && (
+        <div style={{ marginTop: 12, fontSize: 12.5, color: '#3d4654', lineHeight: 1.55, background: '#f6f9fb', borderRadius: 10, padding: '10px 14px' }}>
+          <strong style={{ color: BLUE }}>Lectura growth:</strong> {insight}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ExecutiveSummary({
@@ -218,6 +333,12 @@ export function ExecutiveSummary({
               })}
             </div>
           )}
+
+          {/* Comparativa vs mes anterior (deterministica, datos reales) */}
+          {prevReport && <MonthCompare report={report} prevReport={prevReport} />}
+
+          {/* Perfil de audiencia (deterministico + lectura IA) */}
+          <AudienceProfile report={report} insight={summary.audienceInsight} />
 
           {/* Conclusiones */}
           {(summary.conclusions?.length || 0) > 0 && (
