@@ -187,11 +187,46 @@ function AudienceProfile({ report, insight }: { report: MonthlyReport; insight?:
   );
 }
 
+type HistRow = { year: number; month: number; facturacion: number; reservas: number; inversion: number; roas: number };
+const MES_AB = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+function HistoryTable({ rows }: { rows: HistRow[] }) {
+  if (!rows.length) return null;
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.5, color: INK, marginBottom: 10 }}>Histórico mensual</div>
+      <div style={{ border: '1px solid #e6eaf0', borderRadius: 10, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+          <thead>
+            <tr style={{ background: '#f6f8fa' }}>
+              {['Mes', 'Facturación', 'Reservas', 'Inversión', 'ROAS'].map((h, i) => (
+                <th key={i} style={{ textAlign: i === 0 ? 'left' : 'right', padding: '8px 14px', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3, color: '#8a93a1' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i} style={{ borderTop: '1px solid #eef1f5' }}>
+                <td style={{ padding: '7px 14px', color: INK, fontWeight: 600 }}>{MES_AB[r.month - 1]} {String(r.year).slice(2)}</td>
+                <td style={{ padding: '7px 14px', textAlign: 'right', color: INK, fontWeight: 600 }}>{money(r.facturacion)}</td>
+                <td style={{ padding: '7px 14px', textAlign: 'right', color: '#3d4654' }}>{r.reservas}</td>
+                <td style={{ padding: '7px 14px', textAlign: 'right', color: '#3d4654' }}>{money(r.inversion)}</td>
+                <td style={{ padding: '7px 14px', textAlign: 'right', fontWeight: 700, color: r.roas >= 1 ? '#1b7a44' : '#b07400' }}>{r.roas.toFixed(1)}x</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export function ExecutiveSummary({
-  report, prevReport, property, periodLabel, tracking, year, month, canGenerate,
+  report, prevReport, property, periodLabel, tracking, history, year, month, canGenerate,
 }: {
   report: MonthlyReport; prevReport: MonthlyReport | null; property: Property;
   periodLabel: string; tracking: Record<number, { will_execute: string; period: string; comment: string }>;
+  history?: HistRow[];
   year: number; month: number; canGenerate: boolean;
 }) {
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -336,6 +371,9 @@ export function ExecutiveSummary({
 
           {/* Comparativa vs mes anterior (deterministica, datos reales) */}
           {prevReport && <MonthCompare report={report} prevReport={prevReport} />}
+
+          {/* Histórico mensual (facturación, reservas, inversión, ROAS) */}
+          {history && history.length > 0 && <HistoryTable rows={history} />}
 
           {/* Perfil de audiencia (deterministico + lectura IA) */}
           <AudienceProfile report={report} insight={summary.audienceInsight} />

@@ -291,6 +291,25 @@ export default async function DashboardPage({
     r.roas = roasFrom(f.attributable_revenue, r.total_investment || 0)
     r.ad_cost_pct = adCostPctFrom(f.attributable_revenue, r.total_investment || 0)
   }
+  // Tabla historica para el resumen ejecutivo: reservas directas (count) por mes desde sourceData.
+  const attrSet = new Set(sourceData.attributable)
+  const reservasByMonth = new Map<string, number>()
+  for (const r of sourceData.rows) {
+    if (attrSet.has(r.source)) {
+      const k = `${r.year}-${r.month}`
+      reservasByMonth.set(k, (reservasByMonth.get(k) || 0) + (r.booking_count || 0))
+    }
+  }
+  const historyRows = historical
+    .map((r) => ({
+      year: r.year!, month: r.month!,
+      facturacion: r.attributable_revenue || 0,
+      reservas: reservasByMonth.get(`${r.year}-${r.month}`) || 0,
+      inversion: r.total_investment || 0,
+      roas: r.roas || 0,
+    }))
+    .sort((a, b) => b.year * 12 + b.month - (a.year * 12 + a.month))
+
   if (currentReport) {
     const f = facturacionForMonth(sourceData.rows, sourceData.attributable, selYear, selMonth)
     currentReport.attributable_revenue = f.attributable_revenue
@@ -413,6 +432,7 @@ export default async function DashboardPage({
                   property={property}
                   periodLabel={periodLabel}
                   tracking={proposalTracking}
+                  history={historyRows}
                   year={selYear}
                   month={selMonth}
                   canGenerate={selYear === nowY && selMonth === nowM}
