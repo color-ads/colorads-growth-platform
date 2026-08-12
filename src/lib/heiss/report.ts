@@ -57,7 +57,7 @@ async function ga4(method: 'runReport' | 'runRealtimeReport', body: any, signal:
 
 async function gaql(query: string, signal: AbortSignal): Promise<any[]> {
   const token = await getAccessToken(signal);
-  const res = await fetch(`https://googleads.googleapis.com/v21/customers/${ADS_CUSTOMER}/googleAds:search`, {
+  const res = await fetch(`https://googleads.googleapis.com/v24/customers/${ADS_CUSTOMER}/googleAds:search`, {
     method: 'POST', signal,
     headers: {
       authorization: `Bearer ${token}`,

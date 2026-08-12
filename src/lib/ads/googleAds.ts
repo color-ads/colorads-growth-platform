@@ -1,10 +1,10 @@
 /**
- * Gateway a la Google Ads API (v21) para analisis de audiencia real.
+ * Gateway a la Google Ads API (v24) para analisis de audiencia real.
  * Gateado por las 5 env vars (sin ellas, googleAdsEnabled()=false y todo sigue como hoy).
  * Auth: OAuth2 refresh token -> access token (cacheado ~50min).
  */
 
-const API_VERSION = 'v21';
+const API_VERSION = 'v24';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
 export function googleAdsEnabled(): boolean {
